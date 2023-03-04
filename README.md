@@ -1,5 +1,6 @@
 ### EGSM
 A module that enhances gmod with a thing that was asked for decades
+
 Works only on the main branch
 
 [Documentation](https://github.com/devonium/EGSM/wiki)
