@@ -7,7 +7,7 @@ Works only on the main branch
  
 ### How to install
 * Put [the dll](https://github.com/devonium/EGSM/releases) in garrysmod/lua/bin
-* APPEND 'require("egsm")' to garrysmod/lua/menu/menu.lua
+* APPEND `require("egsm")` to garrysmod/lua/menu/menu.lua
 
 https://youtu.be/SlWGKU-mYRw
 
