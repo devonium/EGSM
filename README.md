@@ -13,6 +13,9 @@ https://youtu.be/SlWGKU-mYRw
 
 ### How to compile
 [garrysmod_common](https://github.com/danielga/garrysmod_common)
+```
+git clone --recursive https://github.com/danielga/garrysmod_common
+```
 
 ```
 premake5 vs2017 --gmcommon="garrysmod_common_path" --autoinstall="gmod_lua_bin_path"
