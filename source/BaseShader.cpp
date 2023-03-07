@@ -3,7 +3,7 @@
 // Purpose: 
 //
 //=====================================================================================//
-
+#include "f_imaterialsystemhardwareconfig.h"
 #include "shaderlib/BaseShader.h"
 #include "shaderlib/ShaderDLL.h"
 #include <IShaderSystem.h>

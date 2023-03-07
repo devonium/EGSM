@@ -1,4 +1,5 @@
 #pragma once
+#include "f_imaterialsystemhardwareconfig.h"
 #include "cpp_shader_constant_register_map.h"
 #include "BaseVSShader.h"
 #include <shaderlib/cshader.h>
@@ -21,6 +22,7 @@ namespace ShaderLib
 {
 	static CShaderManager* g_pShaderManager = NULL;
 	int  MenuInit(GarrysMod::Lua::ILuaBase* LUA);
+	void MenuDeinit(GarrysMod::Lua::ILuaBase* LUA);
 	void LuaInit(GarrysMod::Lua::ILuaBase* LUA);
 	void LuaDeinit(GarrysMod::Lua::ILuaBase* LUA);
 	static CUtlFixedLinkedList< CShaderManager::ShaderLookup_t > lm_VertexShaderDict;
@@ -212,7 +214,6 @@ namespace ShaderLib
 
 			params[FLAGS]->SetIntValue(params[FLAGS]->GetIntValue() | Flags);
 			params[FLAGS2]->SetIntValue(params[FLAGS2]->GetIntValue() | Flags2);
-			Msg("%s::OnInitShaderInstance Materil:%s\n", GetName(), pMaterialName);
 		}
 
 		struct TextureBind
@@ -410,10 +411,7 @@ namespace ShaderLib
 				}
 				else // not flashlight pass
 				{
-					if (bHasBaseTexture)
-					{
-						SetDefaultBlendingShadowState(BASETEXTURE, true);
-					}
+					SetBlendingShadowState(nBlendType);
 				}
 
 				for (int i = 0; i <= ActiveSamplers; i++)

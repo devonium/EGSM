@@ -1,7 +1,7 @@
 #include <mathlib/ssemath.h>
 #include "f_mathlib.h"
-//#include "f_imaterialsystemhardwareconfig.h"
 #include "shaderlib.h"
+//#include "bass.h"
 #include <GarrysMod/Lua/LuaBase.h>
 #include <lua.h>
 #include <GarrysMod/Lua/Interface.h>
@@ -34,6 +34,7 @@ void Menu_Init(ILuaBase* LUA)
 {
 	ExposeVersion(LUA);
 	ShaderLib::MenuInit(LUA);
+	//Bass::MenuInit(LUA);
 
 	auto lua_shared = GetModuleHandle("lua_shared.dll");
 	if (!lua_shared) { ShaderLibError("lua_shared.dll == NULL\n"); }
@@ -56,6 +57,7 @@ void CL_Init(ILuaBase* LUA)
 {
 	ExposeVersion(LUA);
 	ShaderLib::LuaInit(LUA);
+	//Bass::LuaInit(LUA);
 }
 
 void CL_Deinit(ILuaBase* LUA)
@@ -147,9 +149,14 @@ GMOD_MODULE_OPEN()
 		luaL_closestate_hk.Create(target, luaL_closestate_detour);
 		luaL_closestate_hk.Enable();
 	}
+	const char lua_initclf_sign[] =
+#ifdef CHROMIUM
+		"55 8B EC 81 EC 18 02 00 00 53 68 ? ? ? ? 8B D9 FF 15 ? ? ? ? 83 C4 04 E8 ? ? ? ? 68 ? ? ? ? 51 8B C8 C7 04 24 33 33 73 3F 8B 10 FF 52 6C 83 3D ? ? ? ? ? 74 0E 68 ? ? ? ? FF 15 ? ? ? ? 83 C4 04 68 04 02 08 00 E8 ? ? ? ? 83 C4 04 85 C0 74 09 8B C8 E8 ? ? ? ? EB 02 33 C0 56 57 A3 ? ? ? ? E8 ? ? ? ? 6A 00 6A 00 8B C8 8B 10 FF 52 10 A3 ? ? ? ? FF 15 ? ? ? ? 8B ? ? ? ? ? 68";
+#else
+		"55 8B EC 81 EC 18 02 00 00 53 68 ? ? ? ? 8B D9 FF 15 ? ? ? ? 83 C4 04 E8 ? ? ? ? D9 05 ? ? ? ? 68 ? ? ? ? 51 8B 10 8B C8 D9 1C 24 FF 52 6C 83 3D ? ? ? ? ? 74 0B 68 ? ? ? ? FF 15 ? ? ? ? 68 04 02 08 00 E8 ? ? ? ? 83 C4 04 85 C0 74 09 8B C8 E8 ? ? ? ? EB 02 33 C0 56 57 A3 ? ? ? ? E8 ? ? ? ? 6A 00 6A 00 8B C8 8B 10 FF 52 10 A3 ? ? ? ? FF 15 ? ? ? ? 8B";
+#endif
+	auto lua_initclf = ScanSign(client, lua_initclf_sign, sizeof(lua_initclf_sign) - 1);
 
-	const char sign[] = "55 8B EC 81 EC 18 02 00 00 53 68 ? ? ? ? 8B D9 FF 15 ? ? ? ? 83 C4 04 E8 ? ? ? ? D9 05 ? ? ? ? 68 ? ? ? ? 51 8B 10 8B C8 D9 1C 24 FF 52 6C 83 3D ? ? ? ? ? 74 0B 68 ? ? ? ? FF 15 ? ? ? ? 68 04 02 08 00 E8 ? ? ? ? 83 C4 04 85 C0 74 09 8B C8 E8 ? ? ? ? EB 02 33 C0 56 57 A3 ? ? ? ? E8 ? ? ? ? 6A 00 6A 00 8B C8 8B 10 FF 52 10 A3 ? ? ? ? FF 15 ? ? ? ? 8B";
-	auto lua_initclf = ScanSign(client, sign, sizeof(sign) - 1);
 	if (!lua_initclf)
 	{
 		ShaderLibError("lua_initclf == NULL\n");
@@ -163,13 +170,28 @@ GMOD_MODULE_OPEN()
 
 	ConColorMsg(msgc, "----------------------\n");
 
+
 	return 0;
 }
 
 GMOD_MODULE_CLOSE( )
 {
-
+	ShaderLib::MenuDeinit(LUA);
 	return 0;
+}
+
+BOOL WINAPI DllMain( HINSTANCE hinstDLL,  DWORD fdwReason, LPVOID lpvReserved) 
+{
+	switch (fdwReason)
+	{
+	case DLL_PROCESS_ATTACH:
+		HMODULE phModule;
+		char l[MAX_PATH];
+		GetModuleFileName(hinstDLL, l, MAX_PATH);
+		GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_PIN, l, &phModule);
+		break;
+	}
+	return TRUE;
 }
 
 //#include <cdll_client_int.h>

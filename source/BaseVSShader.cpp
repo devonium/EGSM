@@ -7,6 +7,7 @@
 //===========================================================================//
 #if !defined(_STATIC_LINKED) || defined(STDSHADER_DX8_DLL_EXPORT) || defined(STDSHADER_DX9_DLL_EXPORT)
 
+#include "f_imaterialsystemhardwareconfig.h"
 #include "BaseVSShader.h"
 #include "mathlib/vmatrix.h"
 #include "mathlib/bumpvects.h"

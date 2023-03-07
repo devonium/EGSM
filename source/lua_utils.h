@@ -33,6 +33,12 @@ void luau_openlib(GarrysMod::Lua::ILuaBase* LUA, lua_lib& lib, int isGlobal);
 bool push_cFunction(lua_lib& lib, GarrysMod::Lua::CFunc f, const char* name);
 lua_Debug* luau_getcallinfo(GarrysMod::Lua::ILuaBase* LUA);
 
+#define luau_error(LUA, fmt, ...) lua_Debug* ar = luau_getcallinfo(LUA); \
+		auto currline = std::to_string(ar->currentline); \
+		LUA->PushFormattedString("%s:%s: "##fmt##"\n", ar->short_src, currline.c_str(),__VA_ARGS__); \
+		currline.~basic_string(); \
+		LUA->Error(); \
+
 #define LUAUPushConst(p, ns, n) LUA->PushNumber(ns##n); LUA->SetField(-2, p###n);
 #define LUAUPushConstMan(n, v) LUA->PushNumber(v); LUA->SetField(-2, n);
 #define ShaderLibError(e) LUA->PushString("ShaderLib: "##e);LUA->Error();

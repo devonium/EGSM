@@ -7,7 +7,7 @@ newoption({
 })
 
 newoption({
-	trigger = "chrommium",
+	trigger = "chromium",
 	description = "Sets the path to the garrysmod_common (https://github.com/danielga/garrysmod_common) directory",
 	value = "path to garrysmod_common directory"
 })
@@ -194,6 +194,7 @@ function CreateProject(config)
 		filter({})
 end
 
+
 CreateWorkspace({name = "egsm", abi_compatible = true})
 	CreateProject({serverside = false})
     IncludeLuaShared()
@@ -204,6 +205,10 @@ CreateWorkspace({name = "egsm", abi_compatible = true})
     IncludeSDKTier1()
     --IncludeSDKTier2()
     --IncludeSDKTier3()
+	defines 
+	{
+		_OPTIONS.chromium and "CHROMIUM" or "",
+	}
 	files
 	{
 		"source/**.cpp",

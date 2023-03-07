@@ -2,7 +2,6 @@
 #include <GarrysMod/Lua/LuaInterface.h>
 #include <mathlib/ssemath.h>
 #include "f_mathlib.h"
-//#include "f_imaterialsystemhardwareconfig.h"
 #include <shaderapi/IShaderDevice.h>
 #include <shaderapi/ishaderapi.h>
 #include <shaderapi/ishaderdynamic.h>
@@ -32,21 +31,31 @@
 #include <utlhash.h>
 #include <texture_group_names.h>
 #include <sigscan.h>
+//#include "fc_baseentity.h"
+//#include <ivrenderview.h>
+//#include <engine/ivmodelrender.h>
 #include "Windows.h"
 
 using namespace GarrysMod::Lua;
 extern IShaderSystem* g_pSLShaderSystem;
 extern IMaterialSystemHardwareConfig* g_pHardwareConfig = NULL;
 extern const MaterialSystem_Config_t* g_pConfig = NULL;
+#ifndef  CHROMIUM
 extern IMaterialSystem* g_pMaterialSystem = NULL;
+#endif
+
+//extern IVRenderView* render = NULL;
+//extern IVModelRender* modelrender = NULL;
 
 namespace ShaderLib
 {
+	int ShaderUData_typeID;
 	IShaderDevice* g_pShaderDevice = NULL;
 	IShaderAPI* g_pShaderApi = NULL;
 	IShaderShadow* g_pShaderShadow = NULL;
 	CShaderSystem* g_pCShaderSystem = NULL;
 	CShaderSystem::ShaderDLLInfo_t* g_pShaderLibDLL = NULL;
+	int g_pShaderLibDLLIndex = 0;
 
 	const char* g_sDigits[6] = { "0", "1", "2", "3", "4", "5" };
 
@@ -72,7 +81,87 @@ namespace ShaderLib
 		LUA->Error();
 	}
 
-	LUA_FUNCTION(shaderlib_compilepsh)
+	lua_lib shaderlib;
+
+	const char* param2str[] =
+	{
+			"SHADER_PARAM_TYPE_TEXTURE",
+			"SHADER_PARAM_TYPE_FLOAT",
+			"SHADER_PARAM_TYPE_COLOR",
+			"SHADER_PARAM_TYPE_VEC2",
+			"SHADER_PARAM_TYPE_VEC3",
+			"SHADER_PARAM_TYPE_VEC4",
+			"SHADER_PARAM_TYPE_ENVMAP (obsolete)",
+			"SHADER_PARAM_TYPE_FLOAT",
+			"SHADER_PARAM_TYPE_FLOAT",
+			"SHADER_PARAM_TYPE_FOURCC",
+			"SHADER_PARAM_TYPE_MATRIX",
+			"SHADER_PARAM_TYPE_MATERIAL",
+			"SHADER_PARAM_TYPE_STRING",
+			"SHADER_PARAM_TYPE_MATRIX4X",
+	};
+
+	void SpewShader(IShader* shader)
+	{
+		static Color c1(41, 171, 207, 255);
+		ConColorMsg(c1, "---%s---\n\n", shader->GetName());
+
+		int longestName = 0;
+		for (int parami = NUM_SHADER_MATERIAL_VARS; parami < shader->GetNumParams(); parami++)
+		{
+			int len = strlen(shader->GetParamName(parami));
+			if (len > longestName)
+			{
+				longestName = len;
+			}
+		}
+
+		for (int parami = NUM_SHADER_MATERIAL_VARS; parami < shader->GetNumParams(); parami++)
+		{
+			static Color c1(140, 236, 97, 255);
+			ConColorMsg(c1, "%s ", shader->GetParamName(parami));
+
+			for (int space = 0; space < (longestName - strlen(shader->GetParamName(parami))); space++)
+			{
+				Msg(" ");
+			}
+			static Color c2(97, 104, 236, 255);
+			ConColorMsg(c2, " %s\n", param2str[shader->GetParamType(parami)]);
+		}
+		ConColorMsg(c1, "\n--------\n\n");
+	}
+
+	LUA_LIB_FUNCTION(shaderlib, SpewShaders)
+	{
+		for (int i = 0; i < g_pCShaderSystem->m_ShaderDLLs.Count(); i++)
+		{
+			auto dllinfo = &g_pCShaderSystem->m_ShaderDLLs[i];
+			static Color c1(255, 50, 50, 255);
+			ConColorMsg(c1, "%s\n", dllinfo->m_pFileName);
+
+			for (int index = dllinfo->m_ShaderDict.Count(); --index >= 0; )
+			{
+				auto shader = dllinfo->m_ShaderDict.Element(index);
+				SpewShader(shader);
+			}
+		}
+		return 0;
+	}	
+	
+	LUA_LIB_FUNCTION(shaderlib, SpewShader)
+	{
+		auto name = LUA->CheckString();
+
+		auto shader = g_pCShaderSystem->FindShader(name);
+		if (!shader)
+		{
+			luau_error(LUA, "couldn't find '%s'", name);
+		}
+		SpewShader(shader);
+		return 0;
+	}
+
+	LUA_LIB_FUNCTION(shaderlib, CompilePixelShader)
 	{
 		auto name = LUA->CheckString(1);
 		int flags = LUA->CheckNumber(2);
@@ -177,7 +266,7 @@ namespace ShaderLib
 		return 0;
 	}
 
-	LUA_FUNCTION(shaderlib_compilevsh)
+	LUA_LIB_FUNCTION(shaderlib, CompileVertexShader)
 	{
 		auto name = LUA->CheckString(1);
 		int flags = LUA->CheckNumber(2);
@@ -278,7 +367,7 @@ namespace ShaderLib
 		ShaderLib::GShader* Shader = NULL;
 	};
 
-	LUA_FUNCTION(shaderlib_newshader)
+	LUA_LIB_FUNCTION(shaderlib, NewShader)
 	{
 		ShaderLib::GShader* shader = NULL;
 		const char* shadername = LUA->CheckString(1);
@@ -301,7 +390,7 @@ namespace ShaderLib
 			return 1;
 		}
 
-		ShaderUData* u = LUA->NewUserType<ShaderUData>(244);
+		ShaderUData* u = LUA->NewUserType<ShaderUData>(ShaderUData_typeID);
 		LUA->CreateMetaTable("Shader");
 		LUA->SetMetaTable(-2);
 
@@ -313,6 +402,16 @@ namespace ShaderLib
 	}
 
 	lua_lib shader_methods;
+
+	ShaderUData* GetUShader(GarrysMod::Lua::ILuaBase* LUA)
+	{
+		ShaderUData* u = LUA->GetUserType<ShaderUData>(1, ShaderUData_typeID + 0);
+		if (!u)
+		{
+			LUA->TypeError(1, "Shader");
+		}
+		return u;
+	}
 
 	template <typename T>
 	void SetConstant(ILuaBase* LUA, int index, ShaderConstantF::ShaderConstantType type, CUtlVector<ShaderConstantF*>& constants)
@@ -339,7 +438,7 @@ namespace ShaderLib
 
 	LUA_LIB_FUNCTION(shader_methods, SetPixelShaderConstant)
 	{
-		ShaderUData* u = LUA->GetUserType<ShaderUData>(1, 244);
+		ShaderUData* u = GetUShader(LUA);
 		int index = LUA->CheckNumber(2);
 		SetConstant<ShaderConstantF>(LUA, index, ShaderConstantF::Float, u->Shader->PConstants);
 		return 0;
@@ -347,7 +446,7 @@ namespace ShaderLib
 
 	LUA_LIB_FUNCTION(shader_methods, SetVertexShaderConstant)
 	{
-		ShaderUData* u = LUA->GetUserType<ShaderUData>(1, 244);
+		ShaderUData* u = GetUShader(LUA);
 		int index = LUA->CheckNumber(2);
 		SetConstant<ShaderConstantF>(LUA, index, ShaderConstantF::Float, u->Shader->VConstants);
 		return 0;
@@ -387,7 +486,7 @@ namespace ShaderLib
 
 	LUA_LIB_FUNCTION(shader_methods, SetPixelShaderConstantM)
 	{
-		ShaderUData* u = LUA->GetUserType<ShaderUData>(1, 244);
+		ShaderUData* u = GetUShader(LUA);
 		int index = LUA->CheckNumber(2);
 		SetConstantM<ShaderConstantM>(LUA, index, ShaderConstantF::Matrix, u->Shader->PConstants);
 		return 0;
@@ -395,7 +494,7 @@ namespace ShaderLib
 
 	LUA_LIB_FUNCTION(shader_methods, SetVertexShaderConstantM)
 	{
-		ShaderUData* u = LUA->GetUserType<ShaderUData>(1, 244);
+		ShaderUData* u = GetUShader(LUA);
 		int index = LUA->CheckNumber(2);
 		SetConstantM<ShaderConstantM>(LUA, index, ShaderConstantF::Matrix, u->Shader->VConstants);
 		return 0;
@@ -430,18 +529,12 @@ namespace ShaderLib
 
 	void AttemptToSetError(ILuaBase* LUA)
 	{
-		lua_Debug* ar = luau_getcallinfo(LUA);
-		// Using '%i' crashes the game for some fucking reason :|
-		auto currline = std::to_string(ar->currentline);
-		LUA->PushFormattedString("%s:%s: attempt to set a missing parameter", ar->short_src, currline.c_str());
-		currline.~basic_string();
-		LUA->Error();
-
+		luau_error(LUA, "attempt to set a missing parameter", 0)
 	}
 
 	LUA_LIB_FUNCTION(shader_methods, SetPixelShaderConstantFP)
 	{
-		ShaderUData* u = LUA->GetUserType<ShaderUData>(1, 244);
+		ShaderUData* u = GetUShader(LUA);
 		int index = LUA->CheckNumber(2);
 		int paramindex = LUA->CheckNumber(3);
 		if (paramindex > (u->Shader->GetNumParams() - 1)) { AttemptToSetError(LUA); return 0; }
@@ -451,7 +544,7 @@ namespace ShaderLib
 
 	LUA_LIB_FUNCTION(shader_methods, SetVertexShaderConstantFP)
 	{
-		ShaderUData* u = LUA->GetUserType<ShaderUData>(1, 244);
+		ShaderUData* u = GetUShader(LUA);
 		int index = LUA->CheckNumber(2);
 		int paramindex = LUA->CheckNumber(3);
 		if (paramindex > (u->Shader->GetNumParams() - 1)) { AttemptToSetError(LUA); return 0; }
@@ -482,21 +575,21 @@ namespace ShaderLib
 
 	LUA_LIB_FUNCTION(shader_methods, SetPixelShaderStandardConstant)
 	{
-		ShaderUData* u = LUA->GetUserType<ShaderUData>(1, 244);
+		ShaderUData* u = GetUShader(LUA);
 		SetStandardConstant(LUA->CheckNumber(2), LUA->CheckNumber(3), u->Shader->PConstants);
 		return 0;
 	}
 
 	LUA_LIB_FUNCTION(shader_methods, SetVertexShaderStandardConstant)
 	{
-		ShaderUData* u = LUA->GetUserType<ShaderUData>(1, 244);
+		ShaderUData* u = GetUShader(LUA);
 		SetStandardConstant(LUA->CheckNumber(2), LUA->CheckNumber(3), u->Shader->VConstants);
 		return 0;
 	}
 
 	LUA_LIB_FUNCTION(shader_methods, AddParam)
 	{
-		ShaderUData* u = LUA->GetUserType<ShaderUData>(1, 244);
+		ShaderUData* u = GetUShader(LUA);
 		const char* name = LUA->CheckString(2);
 		int type = max(min(LUA->CheckNumber(3), SHADER_PARAM_TYPE_MATRIX4X2), SHADER_PARAM_TYPE_TEXTURE);
 		ShaderLib::CShaderParam* param = NULL;
@@ -553,7 +646,7 @@ namespace ShaderLib
 
 	LUA_LIB_FUNCTION(shader_methods, BindTexture)
 	{
-		ShaderUData* u = LUA->GetUserType<ShaderUData>(1, 244);
+		ShaderUData* u = GetUShader(LUA);
 		int sampler = LUA->CheckNumber(2);
 		int paramindex = LUA->CheckNumber(3);
 		BindTexture(u, sampler, paramindex, TextureBind::TextureType::Texture);
@@ -562,7 +655,7 @@ namespace ShaderLib
 
 	LUA_LIB_FUNCTION(shader_methods, BindStandardTexture)
 	{
-		ShaderUData* u = LUA->GetUserType<ShaderUData>(1, 244);
+		ShaderUData* u = GetUShader(LUA);
 		int sampler = LUA->CheckNumber(2);
 		int paramindex = min(max(LUA->CheckNumber(3), StandardTextureId_t::TEXTURE_LIGHTMAP), StandardTextureId_t::TEXTURE_DEBUG_LUXELS);
 		BindTexture(u, sampler, paramindex, TextureBind::TextureType::Texture, true);
@@ -571,7 +664,7 @@ namespace ShaderLib
 
 	LUA_LIB_FUNCTION(shader_methods, BindCubeMap)
 	{
-		ShaderUData* u = LUA->GetUserType<ShaderUData>(1, 244);
+		ShaderUData* u = GetUShader(LUA);
 		int sampler = LUA->CheckNumber(2);
 		int paramindex = LUA->CheckNumber(3);
 		BindTexture(u, sampler, paramindex, TextureBind::TextureType::Cubemap);
@@ -580,7 +673,7 @@ namespace ShaderLib
 
 	LUA_LIB_FUNCTION(shader_methods, BindBumpMap)
 	{
-		ShaderUData* u = LUA->GetUserType<ShaderUData>(1, 244);
+		ShaderUData* u = GetUShader(LUA);
 		int sampler = LUA->CheckNumber(2);
 		int paramindex = LUA->CheckNumber(3);
 		BindTexture(u, sampler, paramindex, TextureBind::TextureType::Bumpmap);
@@ -604,17 +697,12 @@ namespace ShaderLib
 
 	LUA_LIB_FUNCTION(shader_methods, SetPixelShader)
 	{
-		ShaderUData* u = LUA->GetUserType<ShaderUData>(1, 244);
+		ShaderUData* u = GetUShader(LUA);
 		const char* name = LUA->CheckString(2);
 		auto shader = FindShader(name, g_pShaderManager->m_PixelShaderDict);
 		if (!shader)
 		{
-			// Using '%i' crashes the game for some fucking reason :|
-			lua_Debug* ar = luau_getcallinfo(LUA);
-			auto currline = std::to_string(ar->currentline);
-			LUA->PushFormattedString("%s:%s: attempt to set a missing pixel shader(%s)", ar->short_src, currline.c_str(), name);
-			currline.~basic_string();
-			LUA->Error();
+			luau_error(LUA, "attempt to set a missing pixel shader(%s)", name);
 		}
 		if (u->Shader->PShader) { delete u->Shader->PShader; }
 		shader->m_Flags = 0;
@@ -624,17 +712,12 @@ namespace ShaderLib
 
 	LUA_LIB_FUNCTION(shader_methods, SetVertexShader)
 	{
-		ShaderUData* u = LUA->GetUserType<ShaderUData>(1, 244);
+		ShaderUData* u = GetUShader(LUA);
 		const char* name = LUA->CheckString(2);
 		auto shader = FindShader(name, g_pShaderManager->m_VertexShaderDict);
 		if (!shader)
 		{
-			lua_Debug* ar = luau_getcallinfo(LUA);
-			// Using '%i' crashes the game for some fucking reason :|
-			auto currline = std::to_string(ar->currentline);
-			LUA->PushFormattedString("%s:%s: attempt to set a missing vertex shader(%s)", ar->short_src, currline.c_str(), name);
-			currline.~basic_string();
-			LUA->Error();
+			luau_error(LUA, "attempt to set a missing vertex shader(%s)", name);
 		}
 		if (u->Shader->VShader) { delete u->Shader->VShader; }
 		shader->m_Flags = 0;
@@ -644,7 +727,7 @@ namespace ShaderLib
 
 	LUA_LIB_FUNCTION(shader_methods, SetFlags)
 	{
-		ShaderUData* u = LUA->GetUserType<ShaderUData>(1, 244);
+		ShaderUData* u = GetUShader(LUA);
 		u->Shader->Flags = LUA->CheckNumber(2);
 		u->Shader->UpdateFlags = true;
 		return 0;
@@ -652,7 +735,7 @@ namespace ShaderLib
 
 	LUA_LIB_FUNCTION(shader_methods, SetFlags2)
 	{
-		ShaderUData* u = LUA->GetUserType<ShaderUData>(1, 244);
+		ShaderUData* u = GetUShader(LUA);
 		u->Shader->Flags2 = LUA->CheckNumber(2);
 		u->Shader->UpdateFlags = true;
 		return 0;
@@ -660,21 +743,21 @@ namespace ShaderLib
 
 	LUA_LIB_FUNCTION(shader_methods, SetCullMode)
 	{
-		ShaderUData* u = LUA->GetUserType<ShaderUData>(1, 244);
+		ShaderUData* u = GetUShader(LUA);
 		u->Shader->CullMode = (MaterialCullMode_t)max(min((int)LUA->CheckNumber(2), MATERIAL_CULLMODE_CW), MATERIAL_CULLMODE_CCW);
 		return 0;
 	}
 
 	LUA_LIB_FUNCTION(shader_methods, SetPolyMode)
 	{
-		ShaderUData* u = LUA->GetUserType<ShaderUData>(1, 244);
+		ShaderUData* u = GetUShader(LUA);
 		u->Shader->PolyMode = (ShaderPolyMode_t)max(min((int)LUA->CheckNumber(2), SHADER_POLYMODEFACE_FRONT_AND_BACK), SHADER_POLYMODEFACE_FRONT);
 		return 0;
 	}
 
 	LUA_LIB_FUNCTION(shader_methods, OverrideBlending)
 	{
-		ShaderUData* u = LUA->GetUserType<ShaderUData>(1, 244);
+		ShaderUData* u = GetUShader(LUA);
 		u->Shader->OverrideBlending = LUA->GetBool(2);
 		u->Shader->BlendSrc = (ShaderBlendFactor_t)LUA->CheckNumber(3);
 		u->Shader->BlendDst = (ShaderBlendFactor_t)LUA->CheckNumber(4);
@@ -683,73 +766,73 @@ namespace ShaderLib
 
 	LUA_LIB_FUNCTION(shader_methods, EnableFlashlightSupport)
 	{
-		ShaderUData* u = LUA->GetUserType<ShaderUData>(1, 244);
+		ShaderUData* u = GetUShader(LUA);
 		u->Shader->SupportsFlashlight = LUA->GetBool(2);
 		return 0;
 	}
 
 	LUA_LIB_FUNCTION(shader_methods, EnableStencil)
 	{
-		ShaderUData* u = LUA->GetUserType<ShaderUData>(1, 244);
+		ShaderUData* u = GetUShader(LUA);
 		u->Shader->IsStencilEnabled = LUA->GetBool(2);
 		return 0;
 	}
 
 	LUA_LIB_FUNCTION(shader_methods, GetName)
 	{
-		ShaderUData* u = LUA->GetUserType<ShaderUData>(1, 244);
+		ShaderUData* u = GetUShader(LUA);
 		LUA->PushString(u->Shader->s_Name);
 		return 1;
 	}
 
 	LUA_LIB_FUNCTION(shader_methods, SetStencilFailOperation)
 	{
-		ShaderUData* u = LUA->GetUserType<ShaderUData>(1, 244);
+		ShaderUData* u = GetUShader(LUA);
 		u->Shader->StencilFailOp = (StencilOperation_t)LUA->CheckNumber(2);
 		return 0;
 	}
 
 	LUA_LIB_FUNCTION(shader_methods, SetStencilZFailOperation)
 	{
-		ShaderUData* u = LUA->GetUserType<ShaderUData>(1, 244);
+		ShaderUData* u = GetUShader(LUA);
 		u->Shader->StencilZFail = (StencilOperation_t)LUA->CheckNumber(2);
 		return 0;
 	}
 
 	LUA_LIB_FUNCTION(shader_methods, SetStencilPassOperation)
 	{
-		ShaderUData* u = LUA->GetUserType<ShaderUData>(1, 244);
+		ShaderUData* u = GetUShader(LUA);
 		u->Shader->StencilPassOp = (StencilOperation_t)LUA->CheckNumber(2);
 		return 0;
 	}
 
 	LUA_LIB_FUNCTION(shader_methods, SetStencilCompareFunction)
 	{
-		ShaderUData* u = LUA->GetUserType<ShaderUData>(1, 244);
+		ShaderUData* u = GetUShader(LUA);
 		u->Shader->StencilCompareFunc = (StencilComparisonFunction_t)LUA->CheckNumber(2);
 		return 0;
 	}
 
 	LUA_LIB_FUNCTION(shader_methods, SetStencilReferenceValue)
 	{
-		ShaderUData* u = LUA->GetUserType<ShaderUData>(1, 244);
+		ShaderUData* u = GetUShader(LUA);
 		u->Shader->StencilReferenceValue = LUA->CheckNumber(2);
 		return 0;
 	}
 
 	LUA_LIB_FUNCTION(shader_methods, SetStencilTestMask)
 	{
-		ShaderUData* u = LUA->GetUserType<ShaderUData>(1, 244);
+		ShaderUData* u = GetUShader(LUA);
 		u->Shader->StencilTestMask = LUA->CheckNumber(2);
 		return 0;
 	}
 
 	LUA_LIB_FUNCTION(shader_methods, SetStencilWriteMask)
 	{
-		ShaderUData* u = LUA->GetUserType<ShaderUData>(1, 244);
+		ShaderUData* u = GetUShader(LUA);
 		u->Shader->StencilWriteMask = LUA->CheckNumber(2);
 		return 0;
-	}
+	}	
 
 	typedef VertexShader_t(__thiscall* CShaderManager_SetVertexShaderDecl)(CShaderManager* _this, const char* pVertexShaderFile, int nStaticVshIndex, char* debugLabel);
 
@@ -805,10 +888,11 @@ namespace ShaderLib
 
 		g_pCShaderSystem = (CShaderSystem*)g_pSLShaderSystem;
 
-		g_pShaderLibDLL = &g_pCShaderSystem->m_ShaderDLLs[g_pCShaderSystem->m_ShaderDLLs.AddToTail()];
-		g_pShaderLibDLL->m_pFileName = strdup("custom_shaders.dll");
+		g_pShaderLibDLLIndex = g_pCShaderSystem->m_ShaderDLLs.AddToTail();
+		g_pShaderLibDLL = &g_pCShaderSystem->m_ShaderDLLs[g_pShaderLibDLLIndex];
+		g_pShaderLibDLL->m_pFileName = strdup("egsm_shaders.dll");
 		g_pShaderLibDLL->m_bModShaderDLL = true;
-
+		
 		//sapi = (IShaderDynamicAPI*)((IShaderAPI030*)(shaderapi));
 
 		ConColorMsg(msgc, "-Succ\n");
@@ -818,175 +902,173 @@ namespace ShaderLib
 	{
 		LUA->PushSpecial(SPECIAL_GLOB);
 		LUA->CreateTable();
-		LUA->PushCFunction(shaderlib_compilepsh);
-		LUA->SetField(-2, "CompilePixelShader");
-
-		LUA->PushCFunction(shaderlib_compilevsh);
-		LUA->SetField(-2, "CompileVertexShader");
-
-		LUA->PushCFunction(shaderlib_newshader);
-		LUA->SetField(-2, "NewShader");
-
+		luau_openlib(LUA, shaderlib, 0);
 		LUA->SetField(-2, "shaderlib");
 		LUA->Pop();
 
 		LUA->PushSpecial(SPECIAL_GLOB);
 		LUAUPushConst("", , PSREG_SELFILLUMTINT)
-		LUAUPushConst("", , PSREG_DIFFUSE_MODULATION)
-		LUAUPushConst("", , PSREG_ENVMAP_TINT__SHADOW_TWEAKS)
-		LUAUPushConst("", , PSREG_SELFILLUM_SCALE_BIAS_EXP)
-		LUAUPushConst("", , PSREG_AMBIENT_CUBE)
-		LUAUPushConst("", , PSREG_ENVMAP_FRESNEL__SELFILLUMMASK)
-		LUAUPushConst("", , PSREG_EYEPOS_SPEC_EXPONENT)
-		LUAUPushConst("", , PSREG_FOG_PARAMS)
-		LUAUPushConst("", , PSREG_FLASHLIGHT_ATTENUATION)
-		LUAUPushConst("", , PSREG_FLASHLIGHT_POSITION_RIM_BOOST)
-		LUAUPushConst("", , PSREG_FLASHLIGHT_TO_WORLD_TEXTURE)
-		LUAUPushConst("", , PSREG_FRESNEL_SPEC_PARAMS)
-		LUAUPushConst("", , PSREG_LIGHT_INFO_ARRAY)
-		LUAUPushConst("", , PSREG_SPEC_RIM_PARAMS)
-		LUAUPushConst("", , PSREG_FLASHLIGHT_COLOR)
-		LUAUPushConst("", , PSREG_LINEAR_FOG_COLOR)
-		LUAUPushConst("", , PSREG_LIGHT_SCALE)
-		LUAUPushConst("", , PSREG_FLASHLIGHT_SCREEN_SCALE)
-		LUAUPushConst("", , PSREG_SHADER_CONTROLS)
+			LUAUPushConst("", , PSREG_DIFFUSE_MODULATION)
+			LUAUPushConst("", , PSREG_ENVMAP_TINT__SHADOW_TWEAKS)
+			LUAUPushConst("", , PSREG_SELFILLUM_SCALE_BIAS_EXP)
+			LUAUPushConst("", , PSREG_AMBIENT_CUBE)
+			LUAUPushConst("", , PSREG_ENVMAP_FRESNEL__SELFILLUMMASK)
+			LUAUPushConst("", , PSREG_EYEPOS_SPEC_EXPONENT)
+			LUAUPushConst("", , PSREG_FOG_PARAMS)
+			LUAUPushConst("", , PSREG_FLASHLIGHT_ATTENUATION)
+			LUAUPushConst("", , PSREG_FLASHLIGHT_POSITION_RIM_BOOST)
+			LUAUPushConst("", , PSREG_FLASHLIGHT_TO_WORLD_TEXTURE)
+			LUAUPushConst("", , PSREG_FRESNEL_SPEC_PARAMS)
+			LUAUPushConst("", , PSREG_LIGHT_INFO_ARRAY)
+			LUAUPushConst("", , PSREG_SPEC_RIM_PARAMS)
+			LUAUPushConst("", , PSREG_FLASHLIGHT_COLOR)
+			LUAUPushConst("", , PSREG_LINEAR_FOG_COLOR)
+			LUAUPushConst("", , PSREG_LIGHT_SCALE)
+			LUAUPushConst("", , PSREG_FLASHLIGHT_SCREEN_SCALE)
+			LUAUPushConst("", , PSREG_SHADER_CONTROLS)
 
-		LUAUPushConst("", , SHADER_POLYMODE_FILL);
+			LUAUPushConst("", , SHADER_POLYMODE_FILL);
 		LUAUPushConst("", , SHADER_POLYMODE_LINE);
 		LUAUPushConst("", , SHADER_POLYMODE_POINT);
 		LUAUPushConstMan("SHADER_CULLMODE_CW", MATERIAL_CULLMODE_CW);
 		LUAUPushConstMan("SHADER_CULLMODE_CCW", MATERIAL_CULLMODE_CCW);
 
 		LUAUPushConst("PARAM_", , FLAGS)
-		LUAUPushConst("PARAM_", , FLAGS_DEFINED)
-		LUAUPushConst("PARAM_", , FLAGS2)
-		LUAUPushConst("PARAM_", , FLAGS_DEFINED2)
-		LUAUPushConst("PARAM_", , COLOR)
-		LUAUPushConst("PARAM_", , ALPHA)
-		LUAUPushConst("PARAM_", , BASETEXTURE)
-		LUAUPushConst("PARAM_", , FRAME)
-		LUAUPushConst("PARAM_", , BASETEXTURETRANSFORM)
-		LUAUPushConst("PARAM_", , FLASHLIGHTTEXTURE)
-		LUAUPushConst("PARAM_", , FLASHLIGHTTEXTUREFRAME)
-		LUAUPushConst("PARAM_", , COLOR2)
-		LUAUPushConst("PARAM_", , SRGBTINT)
+			LUAUPushConst("PARAM_", , FLAGS_DEFINED)
+			LUAUPushConst("PARAM_", , FLAGS2)
+			LUAUPushConst("PARAM_", , FLAGS_DEFINED2)
+			LUAUPushConst("PARAM_", , COLOR)
+			LUAUPushConst("PARAM_", , ALPHA)
+			LUAUPushConst("PARAM_", , BASETEXTURE)
+			LUAUPushConst("PARAM_", , FRAME)
+			LUAUPushConst("PARAM_", , BASETEXTURETRANSFORM)
+			LUAUPushConst("PARAM_", , FLASHLIGHTTEXTURE)
+			LUAUPushConst("PARAM_", , FLASHLIGHTTEXTUREFRAME)
+			LUAUPushConst("PARAM_", , COLOR2)
+			LUAUPushConst("PARAM_", , SRGBTINT)
 
-		LUAUPushConst("STD", , TEXTURE_LIGHTMAP)
-		LUAUPushConst("STD", , TEXTURE_LIGHTMAP_FULLBRIGHT)
-		LUAUPushConst("STD", , TEXTURE_LIGHTMAP_BUMPED)
-		LUAUPushConst("STD", , TEXTURE_LIGHTMAP_BUMPED_FULLBRIGHT)
-		LUAUPushConst("STD", , TEXTURE_WHITE)
-		LUAUPushConst("STD", , TEXTURE_BLACK)
-		LUAUPushConst("STD", , TEXTURE_GREY)
-		LUAUPushConst("STD", , TEXTURE_GREY_ALPHA_ZERO)
-		LUAUPushConst("STD", , TEXTURE_NORMALMAP_FLAT)
-		LUAUPushConst("STD", , TEXTURE_NORMALIZATION_CUBEMAP)
-		LUAUPushConst("STD", , TEXTURE_NORMALIZATION_CUBEMAP_SIGNED)
-		LUAUPushConst("STD", , TEXTURE_FRAME_BUFFER_FULL_TEXTURE_0)
-		LUAUPushConst("STD", , TEXTURE_FRAME_BUFFER_FULL_TEXTURE_1)
-		LUAUPushConst("STD", , TEXTURE_COLOR_CORRECTION_VOLUME_0)
-		LUAUPushConst("STD", , TEXTURE_COLOR_CORRECTION_VOLUME_1)
-		LUAUPushConst("STD", , TEXTURE_COLOR_CORRECTION_VOLUME_2)
-		LUAUPushConst("STD", , TEXTURE_COLOR_CORRECTION_VOLUME_3)
-		LUAUPushConst("STD", , TEXTURE_FRAME_BUFFER_ALIAS)
-		LUAUPushConst("STD", , TEXTURE_SHADOW_NOISE_2D)
-		LUAUPushConst("STD", , TEXTURE_MORPH_ACCUMULATOR)
-		LUAUPushConst("STD", , TEXTURE_MORPH_WEIGHTS)
-		LUAUPushConst("STD", , TEXTURE_FRAME_BUFFER_FULL_DEPTH)
-		LUAUPushConst("STD", , TEXTURE_IDENTITY_LIGHTWARP)
-		LUAUPushConst("STD", , TEXTURE_DEBUG_LUXELS)
+			LUAUPushConst("STD", , TEXTURE_LIGHTMAP)
+			LUAUPushConst("STD", , TEXTURE_LIGHTMAP_FULLBRIGHT)
+			LUAUPushConst("STD", , TEXTURE_LIGHTMAP_BUMPED)
+			LUAUPushConst("STD", , TEXTURE_LIGHTMAP_BUMPED_FULLBRIGHT)
+			LUAUPushConst("STD", , TEXTURE_WHITE)
+			LUAUPushConst("STD", , TEXTURE_BLACK)
+			LUAUPushConst("STD", , TEXTURE_GREY)
+			LUAUPushConst("STD", , TEXTURE_GREY_ALPHA_ZERO)
+			LUAUPushConst("STD", , TEXTURE_NORMALMAP_FLAT)
+			LUAUPushConst("STD", , TEXTURE_NORMALIZATION_CUBEMAP)
+			LUAUPushConst("STD", , TEXTURE_NORMALIZATION_CUBEMAP_SIGNED)
+			LUAUPushConst("STD", , TEXTURE_FRAME_BUFFER_FULL_TEXTURE_0)
+			LUAUPushConst("STD", , TEXTURE_FRAME_BUFFER_FULL_TEXTURE_1)
+			LUAUPushConst("STD", , TEXTURE_COLOR_CORRECTION_VOLUME_0)
+			LUAUPushConst("STD", , TEXTURE_COLOR_CORRECTION_VOLUME_1)
+			LUAUPushConst("STD", , TEXTURE_COLOR_CORRECTION_VOLUME_2)
+			LUAUPushConst("STD", , TEXTURE_COLOR_CORRECTION_VOLUME_3)
+			LUAUPushConst("STD", , TEXTURE_FRAME_BUFFER_ALIAS)
+			LUAUPushConst("STD", , TEXTURE_SHADOW_NOISE_2D)
+			LUAUPushConst("STD", , TEXTURE_MORPH_ACCUMULATOR)
+			LUAUPushConst("STD", , TEXTURE_MORPH_WEIGHTS)
+			LUAUPushConst("STD", , TEXTURE_FRAME_BUFFER_FULL_DEPTH)
+			LUAUPushConst("STD", , TEXTURE_IDENTITY_LIGHTWARP)
+			LUAUPushConst("STD", , TEXTURE_DEBUG_LUXELS)
 
-		LUAUPushConst("", , MATERIAL_VAR_DEBUG)
-		LUAUPushConst("", , MATERIAL_VAR_NO_DEBUG_OVERRIDE)
-		LUAUPushConst("", , MATERIAL_VAR_NO_DRAW)
-		LUAUPushConst("", , MATERIAL_VAR_USE_IN_FILLRATE_MODE)
-		LUAUPushConst("", , MATERIAL_VAR_VERTEXCOLOR)
-		LUAUPushConst("", , MATERIAL_VAR_VERTEXALPHA)
-		LUAUPushConst("", , MATERIAL_VAR_SELFILLUM)
-		LUAUPushConst("", , MATERIAL_VAR_ADDITIVE)
-		LUAUPushConst("", , MATERIAL_VAR_ALPHATEST)
-		LUAUPushConst("", , MATERIAL_VAR_MULTIPASS)
-		LUAUPushConst("", , MATERIAL_VAR_ZNEARER)
-		LUAUPushConst("", , MATERIAL_VAR_MODEL)
-		LUAUPushConst("", , MATERIAL_VAR_FLAT)
-		LUAUPushConst("", , MATERIAL_VAR_NOCULL)
-		LUAUPushConst("", , MATERIAL_VAR_NOFOG)
-		LUAUPushConst("", , MATERIAL_VAR_IGNOREZ)
-		LUAUPushConst("", , MATERIAL_VAR_DECAL)
-		LUAUPushConst("", , MATERIAL_VAR_ENVMAPSPHERE)
-		LUAUPushConst("", , MATERIAL_VAR_NOALPHAMOD)
-		LUAUPushConst("", , MATERIAL_VAR_ENVMAPCAMERASPACE)
-		LUAUPushConst("", , MATERIAL_VAR_BASEALPHAENVMAPMASK)
-		LUAUPushConst("", , MATERIAL_VAR_TRANSLUCENT)
-		LUAUPushConst("", , MATERIAL_VAR_NORMALMAPALPHAENVMAPMASK)
-		LUAUPushConst("", , MATERIAL_VAR_NEEDS_SOFTWARE_SKINNING)
-		LUAUPushConst("", , MATERIAL_VAR_OPAQUETEXTURE)
-		LUAUPushConst("", , MATERIAL_VAR_ENVMAPMODE)
-		LUAUPushConst("", , MATERIAL_VAR_SUPPRESS_DECALS)
-		LUAUPushConst("", , MATERIAL_VAR_HALFLAMBERT)
-		LUAUPushConst("", , MATERIAL_VAR_WIREFRAME)
-		LUAUPushConst("", , MATERIAL_VAR_ALLOWALPHATOCOVERAGE)
-		LUAUPushConst("", , MATERIAL_VAR_IGNORE_ALPHA_MODULATION)
+			LUAUPushConst("", , MATERIAL_VAR_DEBUG)
+			LUAUPushConst("", , MATERIAL_VAR_NO_DEBUG_OVERRIDE)
+			LUAUPushConst("", , MATERIAL_VAR_NO_DRAW)
+			LUAUPushConst("", , MATERIAL_VAR_USE_IN_FILLRATE_MODE)
+			LUAUPushConst("", , MATERIAL_VAR_VERTEXCOLOR)
+			LUAUPushConst("", , MATERIAL_VAR_VERTEXALPHA)
+			LUAUPushConst("", , MATERIAL_VAR_SELFILLUM)
+			LUAUPushConst("", , MATERIAL_VAR_ADDITIVE)
+			LUAUPushConst("", , MATERIAL_VAR_ALPHATEST)
+			LUAUPushConst("", , MATERIAL_VAR_MULTIPASS)
+			LUAUPushConst("", , MATERIAL_VAR_ZNEARER)
+			LUAUPushConst("", , MATERIAL_VAR_MODEL)
+			LUAUPushConst("", , MATERIAL_VAR_FLAT)
+			LUAUPushConst("", , MATERIAL_VAR_NOCULL)
+			LUAUPushConst("", , MATERIAL_VAR_NOFOG)
+			LUAUPushConst("", , MATERIAL_VAR_IGNOREZ)
+			LUAUPushConst("", , MATERIAL_VAR_DECAL)
+			LUAUPushConst("", , MATERIAL_VAR_ENVMAPSPHERE)
+			LUAUPushConst("", , MATERIAL_VAR_NOALPHAMOD)
+			LUAUPushConst("", , MATERIAL_VAR_ENVMAPCAMERASPACE)
+			LUAUPushConst("", , MATERIAL_VAR_BASEALPHAENVMAPMASK)
+			LUAUPushConst("", , MATERIAL_VAR_TRANSLUCENT)
+			LUAUPushConst("", , MATERIAL_VAR_NORMALMAPALPHAENVMAPMASK)
+			LUAUPushConst("", , MATERIAL_VAR_NEEDS_SOFTWARE_SKINNING)
+			LUAUPushConst("", , MATERIAL_VAR_OPAQUETEXTURE)
+			LUAUPushConst("", , MATERIAL_VAR_ENVMAPMODE)
+			LUAUPushConst("", , MATERIAL_VAR_SUPPRESS_DECALS)
+			LUAUPushConst("", , MATERIAL_VAR_HALFLAMBERT)
+			LUAUPushConst("", , MATERIAL_VAR_WIREFRAME)
+			LUAUPushConst("", , MATERIAL_VAR_ALLOWALPHATOCOVERAGE)
+			LUAUPushConst("", , MATERIAL_VAR_IGNORE_ALPHA_MODULATION)
 
-		LUAUPushConst("", , MATERIAL_VAR2_LIGHTING_UNLIT)
-		LUAUPushConst("", , MATERIAL_VAR2_LIGHTING_VERTEX_LIT)
-		LUAUPushConst("", , MATERIAL_VAR2_LIGHTING_LIGHTMAP)
-		LUAUPushConst("", , MATERIAL_VAR2_LIGHTING_BUMPED_LIGHTMAP)
-		LUAUPushConst("", , MATERIAL_VAR2_DIFFUSE_BUMPMAPPED_MODEL)
-		LUAUPushConst("", , MATERIAL_VAR2_USES_ENV_CUBEMAP)
-		LUAUPushConst("", , MATERIAL_VAR2_NEEDS_TANGENT_SPACES)
-		LUAUPushConst("", , MATERIAL_VAR2_NEEDS_SOFTWARE_LIGHTING)
-		LUAUPushConst("", , MATERIAL_VAR2_BLEND_WITH_LIGHTMAP_ALPHA)
-		LUAUPushConst("", , MATERIAL_VAR2_NEEDS_BAKED_LIGHTING_SNAPSHOTS)
-		LUAUPushConst("", , MATERIAL_VAR2_USE_FLASHLIGHT)
-		LUAUPushConst("", , MATERIAL_VAR2_USE_FIXED_FUNCTION_BAKED_LIGHTING)
-		LUAUPushConst("", , MATERIAL_VAR2_NEEDS_FIXED_FUNCTION_FLASHLIGHT)
-		LUAUPushConst("", , MATERIAL_VAR2_USE_EDITOR)
-		LUAUPushConst("", , MATERIAL_VAR2_NEEDS_POWER_OF_TWO_FRAME_BUFFER_TEXTURE)
-		LUAUPushConst("", , MATERIAL_VAR2_NEEDS_FULL_FRAME_BUFFER_TEXTURE)
-		LUAUPushConst("", , MATERIAL_VAR2_IS_SPRITECARD)
-		LUAUPushConst("", , MATERIAL_VAR2_USES_VERTEXID)
-		LUAUPushConst("", , MATERIAL_VAR2_SUPPORTS_HW_SKINNING)
-		LUAUPushConst("", , MATERIAL_VAR2_SUPPORTS_FLASHLIGHT)
+			LUAUPushConst("", , MATERIAL_VAR2_LIGHTING_UNLIT)
+			LUAUPushConst("", , MATERIAL_VAR2_LIGHTING_VERTEX_LIT)
+			LUAUPushConst("", , MATERIAL_VAR2_LIGHTING_LIGHTMAP)
+			LUAUPushConst("", , MATERIAL_VAR2_LIGHTING_BUMPED_LIGHTMAP)
+			LUAUPushConst("", , MATERIAL_VAR2_DIFFUSE_BUMPMAPPED_MODEL)
+			LUAUPushConst("", , MATERIAL_VAR2_USES_ENV_CUBEMAP)
+			LUAUPushConst("", , MATERIAL_VAR2_NEEDS_TANGENT_SPACES)
+			LUAUPushConst("", , MATERIAL_VAR2_NEEDS_SOFTWARE_LIGHTING)
+			LUAUPushConst("", , MATERIAL_VAR2_BLEND_WITH_LIGHTMAP_ALPHA)
+			LUAUPushConst("", , MATERIAL_VAR2_NEEDS_BAKED_LIGHTING_SNAPSHOTS)
+			LUAUPushConst("", , MATERIAL_VAR2_USE_FLASHLIGHT)
+			LUAUPushConst("", , MATERIAL_VAR2_USE_FIXED_FUNCTION_BAKED_LIGHTING)
+			LUAUPushConst("", , MATERIAL_VAR2_NEEDS_FIXED_FUNCTION_FLASHLIGHT)
+			LUAUPushConst("", , MATERIAL_VAR2_USE_EDITOR)
+			LUAUPushConst("", , MATERIAL_VAR2_NEEDS_POWER_OF_TWO_FRAME_BUFFER_TEXTURE)
+			LUAUPushConst("", , MATERIAL_VAR2_NEEDS_FULL_FRAME_BUFFER_TEXTURE)
+			LUAUPushConst("", , MATERIAL_VAR2_IS_SPRITECARD)
+			LUAUPushConst("", , MATERIAL_VAR2_USES_VERTEXID)
+			LUAUPushConst("", , MATERIAL_VAR2_SUPPORTS_HW_SKINNING)
+			LUAUPushConst("", , MATERIAL_VAR2_SUPPORTS_FLASHLIGHT)
 
-		LUAUPushConst("", , SHADER_PARAM_TYPE_TEXTURE)
-		LUAUPushConst("", , SHADER_PARAM_TYPE_COLOR)
-		LUAUPushConst("", , SHADER_PARAM_TYPE_VEC2)
-		LUAUPushConst("", , SHADER_PARAM_TYPE_VEC3)
-		LUAUPushConst("", , SHADER_PARAM_TYPE_VEC4)
-		LUAUPushConst("", , SHADER_PARAM_TYPE_FLOAT)
-		LUAUPushConst("", , SHADER_PARAM_TYPE_MATRIX)
-		LUAUPushConst("", , SHADER_PARAM_TYPE_STRING)
-		LUAUPushConst("", , SHADER_PARAM_TYPE_MATRIX4X2)
+			LUAUPushConst("", , SHADER_PARAM_TYPE_TEXTURE)
+			LUAUPushConst("", , SHADER_PARAM_TYPE_COLOR)
+			LUAUPushConst("", , SHADER_PARAM_TYPE_VEC2)
+			LUAUPushConst("", , SHADER_PARAM_TYPE_VEC3)
+			LUAUPushConst("", , SHADER_PARAM_TYPE_VEC4)
+			LUAUPushConst("", , SHADER_PARAM_TYPE_FLOAT)
+			LUAUPushConst("", , SHADER_PARAM_TYPE_MATRIX)
+			LUAUPushConst("", , SHADER_PARAM_TYPE_STRING)
+			LUAUPushConst("", , SHADER_PARAM_TYPE_MATRIX4X2)
 
-		LUAUPushConst("", , D3DXSHADER_DEBUG)
-		LUAUPushConst("", , D3DXSHADER_SKIPVALIDATION)
-		LUAUPushConst("", , D3DXSHADER_SKIPOPTIMIZATION)
-		LUAUPushConst("", , D3DXSHADER_PACKMATRIX_ROWMAJOR)
-		LUAUPushConst("", , D3DXSHADER_PACKMATRIX_COLUMNMAJOR)
-		LUAUPushConst("", , D3DXSHADER_PARTIALPRECISION)
-		LUAUPushConst("", , D3DXSHADER_FORCE_VS_SOFTWARE_NOOPT)
-		LUAUPushConst("", , D3DXSHADER_FORCE_PS_SOFTWARE_NOOPT)
-		LUAUPushConst("", , D3DXSHADER_NO_PRESHADER)
-		LUAUPushConst("", , D3DXSHADER_AVOID_FLOW_CONTROL)
-		LUAUPushConst("", , D3DXSHADER_PREFER_FLOW_CONTROL)
-		LUAUPushConst("", , D3DXSHADER_ENABLE_BACKWARDS_COMPATIBILITY)
-		LUAUPushConst("", , D3DXSHADER_IEEE_STRICTNESS)
-		LUAUPushConst("", , D3DXSHADER_USE_LEGACY_D3DX9_31_DLL)
-		LUAUPushConst("", , D3DXSHADER_OPTIMIZATION_LEVEL0)
-		LUAUPushConst("", , D3DXSHADER_OPTIMIZATION_LEVEL1)
-		LUAUPushConst("", , D3DXSHADER_OPTIMIZATION_LEVEL2)
-		LUAUPushConst("", , D3DXSHADER_OPTIMIZATION_LEVEL3)
+			LUAUPushConst("", , D3DXSHADER_DEBUG)
+			LUAUPushConst("", , D3DXSHADER_SKIPVALIDATION)
+			LUAUPushConst("", , D3DXSHADER_SKIPOPTIMIZATION)
+			LUAUPushConst("", , D3DXSHADER_PACKMATRIX_ROWMAJOR)
+			LUAUPushConst("", , D3DXSHADER_PACKMATRIX_COLUMNMAJOR)
+			LUAUPushConst("", , D3DXSHADER_PARTIALPRECISION)
+			LUAUPushConst("", , D3DXSHADER_FORCE_VS_SOFTWARE_NOOPT)
+			LUAUPushConst("", , D3DXSHADER_FORCE_PS_SOFTWARE_NOOPT)
+			LUAUPushConst("", , D3DXSHADER_NO_PRESHADER)
+			LUAUPushConst("", , D3DXSHADER_AVOID_FLOW_CONTROL)
+			LUAUPushConst("", , D3DXSHADER_PREFER_FLOW_CONTROL)
+			LUAUPushConst("", , D3DXSHADER_ENABLE_BACKWARDS_COMPATIBILITY)
+			LUAUPushConst("", , D3DXSHADER_IEEE_STRICTNESS)
+			LUAUPushConst("", , D3DXSHADER_USE_LEGACY_D3DX9_31_DLL)
+			LUAUPushConst("", , D3DXSHADER_OPTIMIZATION_LEVEL0)
+			LUAUPushConst("", , D3DXSHADER_OPTIMIZATION_LEVEL1)
+			LUAUPushConst("", , D3DXSHADER_OPTIMIZATION_LEVEL2)
+			LUAUPushConst("", , D3DXSHADER_OPTIMIZATION_LEVEL3)
 
 #define GENStandardConstantTypeLua(v) LUAUPushConst("STDCONST_", ShaderConstantP::StandardConstantType::, v);
 			GENStandardConstantType(GENStandardConstantTypeLua);
 		LUA->Pop();
 
-		LUA->CreateMetaTable("Shader");
+		ShaderUData_typeID = LUA->CreateMetaTable("Shader");
 		LUA->CreateTable();
 		luau_openlib(LUA, shader_methods, 0);
 		LUA->SetField(-2, "__index");
 		LUA->Pop();
+	}
+
+	void MenuDeinit(GarrysMod::Lua::ILuaBase* LUA)
+	{
+		if (!g_pShaderLibDLL) { return; }
+		g_pCShaderSystem->m_ShaderDLLs.Remove(g_pShaderLibDLLIndex);
 	}
 
 	void LuaDeinit(GarrysMod::Lua::ILuaBase* LUA)
@@ -995,10 +1077,13 @@ namespace ShaderLib
 		for (int index = g_pShaderLibDLL->m_ShaderDict.Count(); --index >= 0; )
 		{
 			ShaderLib::GShader* shader = (ShaderLib::GShader*)g_pShaderLibDLL->m_ShaderDict.Element(index);
+			shader->LUA = NULL;
 			shader->Destruct();
 			g_pShaderLibDLL->m_ShaderDict.RemoveAt(index);
+			
 		}
 
+		/*
 		if (!g_pShaderManager) { return; }
 
 		{
@@ -1044,6 +1129,7 @@ namespace ShaderLib
 				}
 			}
 		}
+		*/
 	}
 
 }
