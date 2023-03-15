@@ -31,10 +31,8 @@
 #include <utlhash.h>
 #include <texture_group_names.h>
 #include <sigscan.h>
-//#include "fc_baseentity.h"
-//#include <ivrenderview.h>
-//#include <engine/ivmodelrender.h>
 #include "Windows.h"
+#include "DepthWrite.h"
 
 using namespace GarrysMod::Lua;
 extern IShaderSystem* g_pSLShaderSystem;
@@ -44,8 +42,7 @@ extern const MaterialSystem_Config_t* g_pConfig = NULL;
 extern IMaterialSystem* g_pMaterialSystem = NULL;
 #endif
 
-//extern IVRenderView* render = NULL;
-//extern IVModelRender* modelrender = NULL;
+extern DepthWrite::CShader* g_DepthWriteShader;
 
 namespace ShaderLib
 {
@@ -146,8 +143,8 @@ namespace ShaderLib
 			}
 		}
 		return 0;
-	}	
-	
+	}
+
 	LUA_LIB_FUNCTION(shaderlib, SpewShader)
 	{
 		auto name = LUA->CheckString();
@@ -832,7 +829,7 @@ namespace ShaderLib
 		ShaderUData* u = GetUShader(LUA);
 		u->Shader->StencilWriteMask = LUA->CheckNumber(2);
 		return 0;
-	}	
+	}
 
 	typedef VertexShader_t(__thiscall* CShaderManager_SetVertexShaderDecl)(CShaderManager* _this, const char* pVertexShaderFile, int nStaticVshIndex, char* debugLabel);
 
@@ -841,7 +838,6 @@ namespace ShaderLib
 		g_pShaderManager = _this;
 		return (int)INVALID_SHADER;// hook.GetTrampoline<CShaderManager_SetVertexShaderDecl>()(_this, pVertexShaderFile, nStaticVshIndex, debugLabel);
 	}
-
 
 	int MenuInit(GarrysMod::Lua::ILuaBase* LUA)
 	{
@@ -882,7 +878,6 @@ namespace ShaderLib
 
 		if (!g_pShaderManager) { ShaderLibError("g_pShaderManager == NULL\n"); return 0; }
 
-
 		D3DXCompileShader = (D3DXCompileShaderDecl*)GetProcAddress(d3dx9_40, "D3DXCompileShader");
 		if (!D3DXCompileShader) { ShaderLibError("D3DXCompileShader == NULL\n"); return 0; }
 
@@ -892,14 +887,44 @@ namespace ShaderLib
 		g_pShaderLibDLL = &g_pCShaderSystem->m_ShaderDLLs[g_pShaderLibDLLIndex];
 		g_pShaderLibDLL->m_pFileName = strdup("egsm_shaders.dll");
 		g_pShaderLibDLL->m_bModShaderDLL = true;
-		
-		//sapi = (IShaderDynamicAPI*)((IShaderAPI030*)(shaderapi));
+
+		//IShaderDynamicAPI* sapi = (IShaderDynamicAPI*)((IShaderAPI030*)(g_pShaderApi));
+
+		for (int i = 0; i < g_pCShaderSystem->m_ShaderDLLs.Count(); i++)
+		{
+			auto shaderdll = &g_pCShaderSystem->m_ShaderDLLs[i];
+			for (int index = shaderdll->m_ShaderDict.Count(); --index >= 0; )
+			{
+				auto shader = shaderdll->m_ShaderDict.Element(index);
+				if (strcmp(shader->GetName(), "DepthWrite") == 0)
+				{
+					shaderdll->m_ShaderDict[index] = g_DepthWriteShader;
+				}
+			}
+		}
 
 		ConColorMsg(msgc, "-Succ\n");
 	}
 
 	void LuaInit(GarrysMod::Lua::ILuaBase* LUA)
 	{
+		//g_pShaderLibDLL->m_ShaderDict.Insert("DepthWrite", g_DepthWriteShader);
+		int iW, iH;
+		g_pMaterialSystem->GetBackBufferDimensions(iW, iH);
+
+		LUA->PushSpecial(SPECIAL_GLOB);
+		LUA->GetField(-1, "GetRenderTargetEx");
+			LUA->PushString("_rt_ResolvedFullFrameDepth");
+			LUA->PushNumber(iW);
+			LUA->PushNumber(iH);
+			LUA->PushNumber(RT_SIZE_FULL_FRAME_BUFFER);
+			LUA->PushNumber(MATERIAL_RT_DEPTH_ONLY);
+			LUA->PushNumber(0);
+			LUA->PushNumber(0);
+			LUA->PushNumber(IMAGE_FORMAT_RGBA32323232F);
+		LUA->Call(8, 0);
+		LUA->Pop();
+
 		LUA->PushSpecial(SPECIAL_GLOB);
 		LUA->CreateTable();
 		luau_openlib(LUA, shaderlib, 0);
@@ -1080,7 +1105,7 @@ namespace ShaderLib
 			shader->LUA = NULL;
 			shader->Destruct();
 			g_pShaderLibDLL->m_ShaderDict.RemoveAt(index);
-			
+
 		}
 
 		/*

@@ -122,6 +122,27 @@ public:
 		m_bNUM_LIGHTS = true;
 #endif
 	}
+private:
+	int m_nCUSTOM_PASS;
+#ifdef _DEBUG
+	bool m_bCUSTOM_PASS;
+#endif
+public:
+	void SetCUSTOM_PASS( int i )
+	{
+		Assert( i >= 0 && i <= 1 );
+		m_nCUSTOM_PASS = i;
+#ifdef _DEBUG
+		m_bCUSTOM_PASS = true;
+#endif
+	}
+	void SetCUSTOM_PASS( bool i )
+	{
+		m_nCUSTOM_PASS = i ? 1 : 0;
+#ifdef _DEBUG
+		m_bCUSTOM_PASS = true;
+#endif
+	}
 public:
 	example_model_vs20_Dynamic_Index()
 	{
@@ -145,16 +166,20 @@ public:
 		m_bNUM_LIGHTS = false;
 #endif // _DEBUG
 		m_nNUM_LIGHTS = 0;
+#ifdef _DEBUG
+		m_bCUSTOM_PASS = false;
+#endif // _DEBUG
+		m_nCUSTOM_PASS = 0;
 	}
 	int GetIndex()
 	{
 		// Asserts to make sure that we aren't using any skipped combinations.
 		// Asserts to make sure that we are setting all of the combination vars.
 #ifdef _DEBUG
-		bool bAllDynamicVarsDefined = m_bCOMPRESSED_VERTS && m_bDOWATERFOG && m_bSKINNING && m_bLIGHTING_PREVIEW && m_bNUM_LIGHTS;
+		bool bAllDynamicVarsDefined = m_bCOMPRESSED_VERTS && m_bDOWATERFOG && m_bSKINNING && m_bLIGHTING_PREVIEW && m_bNUM_LIGHTS && m_bCUSTOM_PASS;
 		Assert( bAllDynamicVarsDefined );
 #endif // _DEBUG
-		return ( 1 * m_nCOMPRESSED_VERTS ) + ( 2 * m_nDOWATERFOG ) + ( 4 * m_nSKINNING ) + ( 8 * m_nLIGHTING_PREVIEW ) + ( 16 * m_nNUM_LIGHTS ) + 0;
+		return ( 1 * m_nCOMPRESSED_VERTS ) + ( 2 * m_nDOWATERFOG ) + ( 4 * m_nSKINNING ) + ( 8 * m_nLIGHTING_PREVIEW ) + ( 16 * m_nNUM_LIGHTS ) + ( 80 * m_nCUSTOM_PASS ) + 0;
 	}
 };
-#define shaderDynamicTest_example_model_vs20 vsh_forgot_to_set_dynamic_COMPRESSED_VERTS + vsh_forgot_to_set_dynamic_DOWATERFOG + vsh_forgot_to_set_dynamic_SKINNING + vsh_forgot_to_set_dynamic_LIGHTING_PREVIEW + vsh_forgot_to_set_dynamic_NUM_LIGHTS + 0
+#define shaderDynamicTest_example_model_vs20 vsh_forgot_to_set_dynamic_COMPRESSED_VERTS + vsh_forgot_to_set_dynamic_DOWATERFOG + vsh_forgot_to_set_dynamic_SKINNING + vsh_forgot_to_set_dynamic_LIGHTING_PREVIEW + vsh_forgot_to_set_dynamic_NUM_LIGHTS + vsh_forgot_to_set_dynamic_CUSTOM_PASS + 0

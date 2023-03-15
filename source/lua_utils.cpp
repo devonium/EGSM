@@ -36,12 +36,7 @@ bool push_cFunction(lua_lib& lib, GarrysMod::Lua::CFunc f, const char* name)
 lua_Debug* luau_getcallinfo(GarrysMod::Lua::ILuaBase* LUA)
 {
 	static lua_Debug ar;
-	int level = 0;
-	while (LUA->GetStack(level, &ar) && LUA->GetInfo("lS", &ar))
-	{
-		level++;
-	}
-	LUA->GetStack(level - 1, &ar);
+	LUA->GetStack(1, &ar);
 	LUA->GetInfo("lS", &ar);
 	return &ar;
 }

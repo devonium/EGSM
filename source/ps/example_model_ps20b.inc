@@ -88,7 +88,7 @@ public:
 		bool bAllStaticVarsDefined = m_bCONVERT_TO_SRGB && m_bFLASHLIGHT && m_bFLASHLIGHTDEPTHFILTERMODE;
 		Assert( bAllStaticVarsDefined );
 #endif // _DEBUG
-		return ( 80 * m_nCONVERT_TO_SRGB ) + ( 80 * m_nFLASHLIGHT ) + ( 160 * m_nFLASHLIGHTDEPTHFILTERMODE ) + 0;
+		return ( 160 * m_nCONVERT_TO_SRGB ) + ( 160 * m_nFLASHLIGHT ) + ( 320 * m_nFLASHLIGHTDEPTHFILTERMODE ) + 0;
 	}
 };
 #define shaderStaticTest_example_model_ps20b psh_forgot_to_set_static_CONVERT_TO_SRGB + psh_forgot_to_set_static_FLASHLIGHT + psh_forgot_to_set_static_FLASHLIGHTDEPTHFILTERMODE + 0
@@ -199,6 +199,27 @@ public:
 		m_bFLASHLIGHTSHADOWS = true;
 #endif
 	}
+private:
+	int m_nCUSTOM_PASS;
+#ifdef _DEBUG
+	bool m_bCUSTOM_PASS;
+#endif
+public:
+	void SetCUSTOM_PASS( int i )
+	{
+		Assert( i >= 0 && i <= 1 );
+		m_nCUSTOM_PASS = i;
+#ifdef _DEBUG
+		m_bCUSTOM_PASS = true;
+#endif
+	}
+	void SetCUSTOM_PASS( bool i )
+	{
+		m_nCUSTOM_PASS = i ? 1 : 0;
+#ifdef _DEBUG
+		m_bCUSTOM_PASS = true;
+#endif
+	}
 public:
 	example_model_ps20b_Dynamic_Index()
 	{
@@ -222,16 +243,20 @@ public:
 		m_bFLASHLIGHTSHADOWS = false;
 #endif // _DEBUG
 		m_nFLASHLIGHTSHADOWS = 0;
+#ifdef _DEBUG
+		m_bCUSTOM_PASS = false;
+#endif // _DEBUG
+		m_nCUSTOM_PASS = 0;
 	}
 	int GetIndex()
 	{
 		// Asserts to make sure that we aren't using any skipped combinations.
 		// Asserts to make sure that we are setting all of the combination vars.
 #ifdef _DEBUG
-		bool bAllDynamicVarsDefined = m_bWRITEWATERFOGTODESTALPHA && m_bPIXELFOGTYPE && m_bNUM_LIGHTS && m_bWRITE_DEPTH_TO_DESTALPHA && m_bFLASHLIGHTSHADOWS;
+		bool bAllDynamicVarsDefined = m_bWRITEWATERFOGTODESTALPHA && m_bPIXELFOGTYPE && m_bNUM_LIGHTS && m_bWRITE_DEPTH_TO_DESTALPHA && m_bFLASHLIGHTSHADOWS && m_bCUSTOM_PASS;
 		Assert( bAllDynamicVarsDefined );
 #endif // _DEBUG
-		return ( 1 * m_nWRITEWATERFOGTODESTALPHA ) + ( 2 * m_nPIXELFOGTYPE ) + ( 4 * m_nNUM_LIGHTS ) + ( 20 * m_nWRITE_DEPTH_TO_DESTALPHA ) + ( 40 * m_nFLASHLIGHTSHADOWS ) + 0;
+		return ( 1 * m_nWRITEWATERFOGTODESTALPHA ) + ( 2 * m_nPIXELFOGTYPE ) + ( 4 * m_nNUM_LIGHTS ) + ( 20 * m_nWRITE_DEPTH_TO_DESTALPHA ) + ( 40 * m_nFLASHLIGHTSHADOWS ) + ( 80 * m_nCUSTOM_PASS ) + 0;
 	}
 };
-#define shaderDynamicTest_example_model_ps20b psh_forgot_to_set_dynamic_WRITEWATERFOGTODESTALPHA + psh_forgot_to_set_dynamic_PIXELFOGTYPE + psh_forgot_to_set_dynamic_NUM_LIGHTS + psh_forgot_to_set_dynamic_WRITE_DEPTH_TO_DESTALPHA + psh_forgot_to_set_dynamic_FLASHLIGHTSHADOWS + 0
+#define shaderDynamicTest_example_model_ps20b psh_forgot_to_set_dynamic_WRITEWATERFOGTODESTALPHA + psh_forgot_to_set_dynamic_PIXELFOGTYPE + psh_forgot_to_set_dynamic_NUM_LIGHTS + psh_forgot_to_set_dynamic_WRITE_DEPTH_TO_DESTALPHA + psh_forgot_to_set_dynamic_FLASHLIGHTSHADOWS + psh_forgot_to_set_dynamic_CUSTOM_PASS + 0

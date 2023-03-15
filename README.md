@@ -4,6 +4,7 @@ A module that enhances gmod with a thing that was asked for decades
 Works only on the main branch
 
 [Documentation](https://github.com/devonium/EGSM/wiki)
+[Discord](https://discord.gg/X2Ay3cgW8T)
  
 ### How to install
 * Put [the dll](https://github.com/devonium/EGSM/releases) in garrysmod/lua/bin
