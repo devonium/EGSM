@@ -195,7 +195,7 @@ function CreateProject(config)
 end
 
 
-CreateWorkspace({name = "egsm", abi_compatible = true})
+CreateWorkspace({name = (_OPTIONS.chromium and "egsm_chromium" or "egsm"), abi_compatible = true})
 	CreateProject({serverside = false})
     IncludeLuaShared()
     IncludeDetouring()

@@ -161,6 +161,11 @@ namespace ShaderLib
 			return 0;
 		}
 
+		virtual bool NeedsFullFrameBufferTexture(IMaterialVar** params, bool bCheckSpecificToThisFrame /* = true */) const
+		{
+			return true;
+		}
+
 		void OnInitShaderInstance(IMaterialVar** params, IShaderInit* pShaderInit, const char* pMaterialName)
 		{
 			for (int i = 0; i < PConstants.Count(); i++)
@@ -253,7 +258,7 @@ namespace ShaderLib
 			BOOL
 		};
 
-#define GENStandardConstantType(_) _(EYE_POS) _(CURTIME) _(LIGHT_INFO) _(AMBIENT_CUBE) _(FOG_PARAMS) _(SHADER_CONTROLS) _(DIFFUSE_MODULATION)
+#define GENStandardConstantType(_) _(EYE_POS) _(CURTIME) _(LIGHT_INFO) _(AMBIENT_CUBE) _(FOG_PARAMS) _(SHADER_CONTROLS) _(DIFFUSE_MODULATION) _(INVERSE_VIEWMATRIX)
 #define GENStandardConstantTypeEnum(v) v,
 		struct ShaderConstantP
 		{
@@ -281,7 +286,7 @@ namespace ShaderLib
 		};
 
 		LightState_t lightState;
-
+		VMatrix viewMatrix, projectionMatrix, viewProjectionMatrix, inverseViewProjectionMatrix;
 		RetValueType StdToValue(IShaderDynamicAPI* pShaderAPI, ShaderConstantP* param, IMaterialVar** params, int vsh)
 		{
 			switch (param->Param)
@@ -313,6 +318,22 @@ namespace ShaderLib
 				fVals[2] = (pShaderAPI->GetPixelFogCombo() == 1 && (pShaderAPI->GetSceneFogMode() == MATERIAL_FOG_LINEAR_BELOW_FOG_Z)) ? 1 : 0;
 				fVals[3] = IS_FLAG_SET(MATERIAL_VAR_VERTEXALPHA) ? 1 : 0;
 				return FLOAT;
+				break;
+			case ShaderConstantP::INVERSE_VIEWMATRIX:
+				
+				pShaderAPI->GetMatrix(MATERIAL_VIEW, viewMatrix.Base());
+				pShaderAPI->GetMatrix(MATERIAL_PROJECTION, projectionMatrix.Base());
+				MatrixMultiply(projectionMatrix, viewMatrix, viewProjectionMatrix);
+				MatrixInverseGeneral(viewProjectionMatrix, inverseViewProjectionMatrix);
+				if (vsh)
+				{
+					pShaderAPI->SetVertexShaderConstant(param->Index, inverseViewProjectionMatrix.Base(), 4);
+				}
+				else
+				{
+					pShaderAPI->SetPixelShaderConstant(param->Index, inverseViewProjectionMatrix.Base(), 4);
+				}
+				return NONE;
 				break;
 			case ShaderConstantP::DIFFUSE_MODULATION:
 				SetModulationPixelShaderDynamicState_LinearColorSpace(param->Index);

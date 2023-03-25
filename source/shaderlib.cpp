@@ -30,9 +30,10 @@
 #include "d3dxdefs.h"
 #include <utlhash.h>
 #include <texture_group_names.h>
-#include <sigscan.h>
+#include <e_utils.h>
 #include "Windows.h"
 #include "DepthWrite.h"
+#include "chromium_fix.h"
 
 using namespace GarrysMod::Lua;
 extern IShaderSystem* g_pSLShaderSystem;
@@ -74,6 +75,7 @@ namespace ShaderLib
 		auto currline = std::to_string(ar->currentline);
 		LUA->PushFormattedString("%s:%s: shader compilation has failed %s\n%s", ar->short_src, currline.c_str(), name, error);
 		currline.~basic_string();
+		
 		delete error;
 		LUA->Error();
 	}
@@ -235,7 +237,7 @@ namespace ShaderLib
 		for (int i = 0; i < combosCount; i++)
 		{
 			IShaderBuffer* bf = (IShaderBuffer*)shaders[i];
-			shaders[i] = g_pShaderManager->m_RawPixelShaderDict[(int)g_pShaderManager->CreatePixelShader(bf)];
+			shaders[i] = g_pShaderManager->m_RawPixelShaderDict[(intp)g_pShaderManager->CreatePixelShader(bf)];
 			bf->Release();
 		}
 
@@ -243,7 +245,6 @@ namespace ShaderLib
 		{
 			lookup.m_ShaderStaticCombos.m_pHardwareShaders = shaders;
 			lookup.m_ShaderStaticCombos.m_nCount = combosCount;
-
 			g_pShaderManager->m_PixelShaderDict.AddToTail(lookup);
 		}
 		else
@@ -332,7 +333,7 @@ namespace ShaderLib
 		for (int i = 0; i < combosCount; i++)
 		{
 			IShaderBuffer* bf = (IShaderBuffer*)shaders[i];
-			shaders[i] = g_pShaderManager->m_RawVertexShaderDict[(int)g_pShaderManager->CreateVertexShader(bf)];
+			shaders[i] = g_pShaderManager->m_RawVertexShaderDict[(intp)g_pShaderManager->CreateVertexShader(bf)];
 			bf->Release();
 		}
 
@@ -679,7 +680,7 @@ namespace ShaderLib
 
 	CShaderManager::ShaderLookup_t* FindShader(const char* name, CUtlFixedLinkedList<CShaderManager::ShaderLookup_t>& list)
 	{
-		int pshIndex = list.Head();
+		intp pshIndex = list.Head();
 		while (pshIndex != list.InvalidIndex())
 		{
 			CShaderManager::ShaderLookup_t* lookup = &list[pshIndex];
@@ -704,6 +705,7 @@ namespace ShaderLib
 		if (u->Shader->PShader) { delete u->Shader->PShader; }
 		shader->m_Flags = 0;
 		u->Shader->PShader = strdup(name);
+
 		return 0;
 	}
 
@@ -719,6 +721,7 @@ namespace ShaderLib
 		if (u->Shader->VShader) { delete u->Shader->VShader; }
 		shader->m_Flags = 0;
 		u->Shader->VShader = strdup(name);
+
 		return 0;
 	}
 
@@ -831,12 +834,46 @@ namespace ShaderLib
 		return 0;
 	}
 
-	typedef VertexShader_t(__thiscall* CShaderManager_SetVertexShaderDecl)(CShaderManager* _this, const char* pVertexShaderFile, int nStaticVshIndex, char* debugLabel);
-
-	VertexShader_t __fastcall CreateVertexShader_detour(CShaderManager* _this, DWORD, const char* pVertexShaderFile, int nStaticVshIndex, char* debugLabel)
+	Define_thiscall_Hook(VertexShader_t, CShaderManager_CreateVertexShader, CShaderManager*, const char* pVertexShaderFile, int nStaticVshIndex, char* debugLabel)
 	{
 		g_pShaderManager = _this;
 		return (int)INVALID_SHADER;// hook.GetTrampoline<CShaderManager_SetVertexShaderDecl>()(_this, pVertexShaderFile, nStaticVshIndex, debugLabel);
+	}
+
+	Define_thiscall_Hook(void, CShaderManager_PurgeUnusedVertexAndPixelShaders, CShaderManager*)
+	{
+		if (!g_pShaderManager) { return; }
+		return;
+	}
+	
+	bool inDepthPass = false;
+	IMaterial* transpMat = NULL;
+	Define_thiscall_Hook(void, CMatRenderContextBase_Bind, void*, IMaterial* mat, void* data)
+	{
+		if (inDepthPass && strcmp(mat->GetShaderName(), "DepthWrite") != 0)
+		{
+			CMatRenderContextBase_Bind_trampoline()(_this, transpMat, NULL);
+			return;
+		}
+		CMatRenderContextBase_Bind_trampoline()(_this, mat, data);
+		return;
+	}
+	
+	Define_thiscall_Hook(void, CBaseWorldView_SSAO_DepthPass, void*)
+	{
+		if (!transpMat)
+		{
+			g_pCVar->FindVar("cl_drawspawneffect")->SetValue(0);
+
+			auto pVMTKeyValues = new KeyValues("UnlitGeneric");
+			pVMTKeyValues->SetString("$basetexture", "color/white");
+			pVMTKeyValues->SetFloat("$alpha", 0);
+			transpMat = g_pMaterialSystem->CreateMaterial("egsm/transpmat", pVMTKeyValues);
+		}
+		inDepthPass = true;
+		CBaseWorldView_SSAO_DepthPass_trampoline()(_this);
+		inDepthPass = false;
+		return;
 	}
 
 	int MenuInit(GarrysMod::Lua::ILuaBase* LUA)
@@ -849,45 +886,98 @@ namespace ShaderLib
 		if (!Sys_LoadInterface("materialsystem", "ShaderSystem002", NULL, (void**)&g_pSLShaderSystem)) { ShaderLibError("IShaderSystem == NULL"); }
 		if (!Sys_LoadInterface("materialsystem", "VMaterialSystemConfig002", NULL, (void**)&g_pConfig)) { ShaderLibError("VMaterialSystemConfig002 == NULL"); }
 		if (!Sys_LoadInterface("materialsystem", MATERIAL_SYSTEM_INTERFACE_VERSION, NULL, (void**)&g_pMaterialSystem)) { ShaderLibError("VMaterialSystem == NULL"); }
-
+		
 		g_pShaderShadow = (IShaderShadow*)(g_pMaterialSystem->QueryInterface(SHADERSHADOW_INTERFACE_VERSION));
-		if (!g_pShaderShadow) { ShaderLibError("IShaderShadow == NULL"); }
-
-		g_pShaderDevice = (IShaderDevice*)(g_pMaterialSystem->QueryInterface(SHADER_DEVICE_INTERFACE_VERSION));
-		if (!g_pShaderDevice) { ShaderLibError("IShaderDevice == NULL"); }
-
 		g_pShaderApi = (IShaderAPI*)(g_pMaterialSystem->QueryInterface(SHADERAPI_INTERFACE_VERSION));
-		if (!g_pShaderApi) { ShaderLibError("IShaderAPI == NULL"); }
+		g_pShaderDevice = (IShaderDevice*)(g_pMaterialSystem->QueryInterface(SHADER_DEVICE_INTERFACE_VERSION));
+		static SourceSDK::FactoryLoader icvar_loader("vstdlib", true, IS_SERVERSIDE, "bin/");
+		g_pCVar = icvar_loader.GetInterface<ICvar>(CVAR_INTERFACE_VERSION);
+
+		if (!g_pShaderShadow) { ShaderLibError("IShaderShadow == NULL"); }
+		if (!g_pShaderDevice) { ShaderLibError("IShaderDevice == NULL"); }
+		if (!g_pShaderApi)	  { ShaderLibError("IShaderAPI == NULL"); }
+		if (!g_pCVar) { ShaderLibError("g_pCVar == NULL"); }
 
 		auto shaderapidx = GetModuleHandle("shaderapidx9.dll");
 		if (!shaderapidx) { ShaderLibError("shaderapidx9.dll == NULL\n"); }
 
 		auto d3dx9_40 = GetModuleHandle("D3DX9_40.dll");
-		if (!d3dx9_40) { ShaderLibError("D3DX9_40.dll == NULL\n"); }
+		if (!d3dx9_40) 
+		{
+			d3dx9_40 = GetModuleHandle("D3DX9_42.dll");
+			if (!d3dx9_40)
+			{
+				ShaderLibError("D3DX9_40.dll == NULL\nD3DX9_42.dll == NULL\n");
+			}
+		}
 
-		static const char sign[] = "55 8B EC 8B 45 08 83 EC 28 56 57 8B F9 85 C0 0F 84 ? ? ? ? 50 8D 45 0A C7 45 EC 00 00 00 00 50 8D 4F 64 C7 45 F0 00 00 00 00 C7 45 E0 00 00 00 00 C7 45 E4 00 00 00 00 C7 45 E8 00 00 00 00 C7 45 FC 00 00 00 00 E8 ? ? ? ? 8B 77 18 8B 4D 0C 89 4D DC 66 8B 00 66 89 45 D8 85 F6 74 11 66 39 06 75 05";
-		CShaderManager_SetVertexShaderDecl CShaderManager_SetVertexShader = (CShaderManager_SetVertexShaderDecl)ScanSign(shaderapidx, sign, sizeof(sign) - 1);
-		if (!CShaderManager_SetVertexShader) { ShaderLibError("CShaderManager::SetVertexShader == NULL\n"); return 0; }
+		{
+			/*
+			#ifdef WIN64
+					static const char sign[] = "48 8B C4 48 89 58 18 55 56 41 54 41 56 41 57 48 83 EC 60 4D 8B F9 41 8B F0 4C 8B F1 48 85 D2 0F 84 ? ? ? ? 0F 57 C0 4C 8B C2 45 33 E4 66 0F 7F 40 A8 48 8D 50 10 44 89 60 A0 48 81 C1 B0 00 00 00 E8 ? ? ? ? 49 8B 5E 20 0F B7 28 48 85 DB 74 17 66 39 2B 75 09 39 73 04 0F 84 ? ? ? ? 48 8B 5B 48 48";
+			#else
+					static const char sign[] = "55 8B EC 8B 45 08 83 EC 28 56 57 8B F9 85 C0 0F 84 ? ? ? ? 50 8D 45 0A C7 45 EC 00 00 00 00 50 8D 4F 64 C7 45 F0 00 00 00 00 C7 45 E0 00 00 00 00 C7 45 E4 00 00 00 00 C7 45 E8 00 00 00 00 C7 45 FC 00 00 00 00 E8 ? ? ? ? 8B 77 18 8B 4D 0C 89 4D DC 66 8B 00 66 89 45 D8 85 F6 74 11 66 39 06 75 05";
+			#endif
+			*/
+			static const char sign[] =
+				HOOK_SIGN_CHROMIUM_X64("48 8B C4 48 89 58 18 55 56 41 54 41 56 41 57 48 83 EC 60 4D 8B F9 41 8B F0 4C 8B F1 48 85 D2 0F 84 ? ? ? ? 0F 57 C0 4C 8B C2 45 33 E4 66 0F 7F 40 A8 48 8D 50 10 44 89 60 A0 48 81 C1 B0 00 00 00 E8 ? ? ? ? 49 8B 5E 20 0F B7 28 48 85 DB 74 17 66 39 2B 75 09 39 73 04 0F 84 ? ? ? ? 48 8B 5B 48 48")
+				HOOK_SIGN_x32("55 8B EC 8B 45 08 83 EC 28 56 57 8B F9 85 C0 0F 84 ? ? ? ? 50 8D 45 0A C7 45 EC 00 00 00 00 50 8D 4F 64 C7 45 F0 00 00 00 00 C7 45 E0 00 00 00 00 C7 45 E4 00 00 00 00 C7 45 E8 00 00 00 00 C7 45 FC 00 00 00 00 E8 ? ? ? ? 8B 77 18 8B 4D 0C 89 4D DC 66 8B 00 66 89 45 D8 85 F6 74 11 66 39 06 75 05")
 
-		Detouring::Hook hook;
-		Detouring::Hook::Target target(reinterpret_cast<void*>(CShaderManager_SetVertexShader));
-		hook.Create(target, CreateVertexShader_detour);
-		hook.Enable();
-		g_pShaderShadow->SetVertexShader("HEREHEREHEREHERE", 1010);
-		hook.Destroy();
+				CShaderManager_CreateVertexShader_decl CShaderManager_SetVertexShader = (CShaderManager_CreateVertexShader_decl)ScanSign(shaderapidx, sign, sizeof(sign) - 1);
+			if (!CShaderManager_SetVertexShader) { ShaderLibError("CShaderManager::SetVertexShader == NULL\n"); return 0; }
 
-		if (!g_pShaderManager) { ShaderLibError("g_pShaderManager == NULL\n"); return 0; }
+			Setup_Hook(CShaderManager_CreateVertexShader, CShaderManager_SetVertexShader)
+				g_pShaderShadow->SetVertexShader("HEREHEREHEREHERE", 1010);
+			CShaderManager_CreateVertexShader_hook.Destroy();
+
+			if (!g_pShaderManager) { ShaderLibError("g_pShaderManager == NULL\n"); return 0; }
+		}
 
 		D3DXCompileShader = (D3DXCompileShaderDecl*)GetProcAddress(d3dx9_40, "D3DXCompileShader");
 		if (!D3DXCompileShader) { ShaderLibError("D3DXCompileShader == NULL\n"); return 0; }
 
 		g_pCShaderSystem = (CShaderSystem*)g_pSLShaderSystem;
 
+		auto clientdll = GetModuleHandle("client.dll");
+		if (!clientdll) { ShaderLibError("client.dll == NULL\n"); }
+
+		{
+			/*
+#ifdef CHROMIUM
+				"55 8B EC 83 EC 08 53 8B D9 8B ? ? ? ? ? 8B 01 8B 40 2C FF D0 84 C0 0F 84 ? ? ? ? 8B ? ? ? ? ? 8B 81 0C 10 00 00 89 45 F8 85 C0 74 16 6A 04 6A 00 68 ? ? ? ? 6A 00 68 ? ? ? ? FF 15 ? ? ? ? 8B";
+#endif
+*/
+			static const char sign[] =
+			HOOK_SIGN("55 8B EC 83 EC 08 53 8B D9 8B ? ? ? ? ? 8B 01 8B 40 2C FF D0 84 C0 0F 84 ? ? ? ? 8B ? ? ? ? ? 8B 81 0C 10 00 00 89 45 F8 85 C0 74 16 6A 04 6A 00 68 ? ? ? ? 6A 00 68 ? ? ? ? FF 15 ? ? ? ? 8B")
+
+			void* DepthPass = ScanSign(clientdll, sign, sizeof(sign) - 1);
+			if (!DepthPass) { ShaderLibError("CBaseWorldView::SSAO_DepthPass == NULL\n"); return 0; }
+			Setup_Hook(CBaseWorldView_SSAO_DepthPass, DepthPass)
+		}	
+		
+		auto materialsystemdll = GetModuleHandle("materialsystem.dll");
+		if (!materialsystemdll) { ShaderLibError("materialsystem.dll == NULL\n"); }
+
+		{
+			/*
+#ifdef CHROMIUM
+				"55 8B EC 56 57 8B F9 8B 4D 08 85 C9 75 14 68 ? ? ? ? FF 15 ? ? ? ? 8B ? ? ? ? ? 83 C4 04 8B 01 FF 90 78 01 00 00 8B 17 8B CF 8B F0 FF 92 2C 03 00 00 3B C6 74 2F 8B 06 8B CE 8B 80 E0 00 00 00 FF D0 84 C0 75 14 8B 06 8B CE FF 90 5C 01 00 00";
+#endif
+*/
+			static const char sign[] =
+			HOOK_SIGN_CHROMIUM_X32("55 8B EC 56 57 8B F9 8B 4D 08 85 C9 75 14 68 ? ? ? ? FF 15 ? ? ? ? 8B ? ? ? ? ? 83 C4 04 8B 01 FF 90 78 01 00 00 8B 17 8B CF 8B F0 FF 92 2C 03 00 00 3B C6 74 2F 8B 06 8B CE 8B 80 E0 00 00 00 FF D0 84 C0 75 14 8B 06 8B CE FF 90 5C 01 00 00")
+			HOOK_SIGN("55 8B EC 56 57 8B F9 8B 4D 08 85 C9 75 22 39 ? ? ? ? ? 0F 84 ? ? ? ? 68 ? ? ? ? FF 15 ? ? ? ? 8B ? ? ? ? ? 83 C4 04 EB 0D 8B 01 FF 75 0C FF 90 D4 00 00 00 8B F0 8B 06 8B CE 53 FF 90 78 01 00 00 8B D8 8B CB 8B 13 FF 92 E8 00 00 00 85 C0 0F 8F ? ? ? ? 8B")
+
+			void* Bind = ScanSign(materialsystemdll, sign, sizeof(sign) - 1);
+			if (!Bind) { ShaderLibError("CMatRenderContextBase::Bind == NULL\n"); return 0; }
+			Setup_Hook(CMatRenderContextBase_Bind, Bind)
+		}
+
 		g_pShaderLibDLLIndex = g_pCShaderSystem->m_ShaderDLLs.AddToTail();
 		g_pShaderLibDLL = &g_pCShaderSystem->m_ShaderDLLs[g_pShaderLibDLLIndex];
 		g_pShaderLibDLL->m_pFileName = strdup("egsm_shaders.dll");
 		g_pShaderLibDLL->m_bModShaderDLL = true;
-
+	
 		//IShaderDynamicAPI* sapi = (IShaderDynamicAPI*)((IShaderAPI030*)(g_pShaderApi));
 
 		for (int i = 0; i < g_pCShaderSystem->m_ShaderDLLs.Count(); i++)
@@ -903,12 +993,13 @@ namespace ShaderLib
 			}
 		}
 
+		Setup_Hook(CShaderManager_PurgeUnusedVertexAndPixelShaders, GetVTable(g_pShaderManager)[15])
+
 		ConColorMsg(msgc, "-Succ\n");
 	}
 
 	void LuaInit(GarrysMod::Lua::ILuaBase* LUA)
 	{
-		//g_pShaderLibDLL->m_ShaderDict.Insert("DepthWrite", g_DepthWriteShader);
 		int iW, iH;
 		g_pMaterialSystem->GetBackBufferDimensions(iW, iH);
 
@@ -1108,12 +1199,11 @@ namespace ShaderLib
 
 		}
 
-		/*
 		if (!g_pShaderManager) { return; }
 
 		{
-			int pshIndex = g_pShaderManager->m_PixelShaderDict.Head();
-			int pshIndexPrev = 0;
+			intp pshIndex = g_pShaderManager->m_PixelShaderDict.Head();
+			intp pshIndexPrev = 0;
 			while (pshIndex != g_pShaderManager->m_PixelShaderDict.InvalidIndex())
 			{
 				CShaderManager::ShaderLookup_t& lookup = g_pShaderManager->m_PixelShaderDict[pshIndex];
@@ -1134,8 +1224,8 @@ namespace ShaderLib
 		}
 
 		{
-			int vshIndex = g_pShaderManager->m_VertexShaderDict.Head();
-			int vshIndexPrev = 0;
+			intp vshIndex = g_pShaderManager->m_VertexShaderDict.Head();
+			intp vshIndexPrev = 0;
 			while (vshIndex != g_pShaderManager->m_VertexShaderDict.InvalidIndex())
 			{
 				CShaderManager::ShaderLookup_t& lookup = g_pShaderManager->m_VertexShaderDict[vshIndex];
@@ -1154,7 +1244,7 @@ namespace ShaderLib
 				}
 			}
 		}
-		*/
+		
 	}
 
 }

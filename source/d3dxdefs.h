@@ -1,5 +1,5 @@
 ﻿#pragma once
-
+#include "chromium_fix.h"
 #include <combaseapi.h>
 #include <igamesystem.h>
 #include <regex>
@@ -278,11 +278,13 @@ char* ProcessErrorMessge(const char* pProgram, const char* pErrorMessage, int li
 		GetModuleFileName(NULL, execpath, MAX_PATH);
 		V_StripFilename(execpath);
 		// x86-x64 path fix
-		//int len = strlen(execpath);
-		//if (execpath[len - 1] == 'n' && execpath[len - 2] == 'i' && execpath[len - 3] == 'b')
-		//{
-		//	execpath[len - 4] = 0;
-		//}
+#ifdef CHROMIUM
+		int len = strlen(execpath);
+		if (execpath[len - 1] == 'n' && execpath[len - 2] == 'i' && execpath[len - 3] == 'b')
+		{
+			execpath[len - 4] = 0;
+		}
+#endif
 	}
 
 	int lline = 0;
