@@ -67,7 +67,7 @@ SHADER_DRAW
 		// Turn off writes to color buffer since we always sample shadows from the DEPTH texture later
 		// This gives us double-speed fill when rendering INTO the shadow map
 		pShaderShadow->EnableColorWrites((nColorDepth == 1));
-		pShaderShadow->EnableAlphaWrites(false);
+		pShaderShadow->EnableAlphaWrites(true);
 
 		// Don't backface cull unless alpha clipping, since this can cause artifacts when the
 		// geometry is clipped by the flashlight near plane
@@ -82,7 +82,7 @@ SHADER_DRAW
 				SET_STATIC_VERTEX_SHADER_COMBO(ONLY_PROJECT_POSITION, !bAlphaClip && IsX360() && !nColorDepth); //360 needs to know if it *shouldn't* output texture coordinates to avoid shader patches
 				SET_STATIC_VERTEX_SHADER_COMBO(COLOR_DEPTH, nColorDepth);
 				SET_STATIC_VERTEX_SHADER(depthwrite_vs20);
-
+				pShaderShadow->SetVertexShader("fdepthwrite_vs20", _vshIndex.GetIndex());
 				if (bAlphaClip || g_pHardwareConfig->PlatformRequiresNonNullPixelShaders() || nColorDepth)
 				{
 					if (bAlphaClip)
@@ -96,12 +96,14 @@ SHADER_DRAW
 						DECLARE_STATIC_PIXEL_SHADER(depthwrite_ps20b);
 						SET_STATIC_PIXEL_SHADER_COMBO(COLOR_DEPTH, nColorDepth);
 						SET_STATIC_PIXEL_SHADER(depthwrite_ps20b);
+						pShaderShadow->SetPixelShader("fdepthwrite_ps20b", _pshIndex.GetIndex());
 					}
 					else
 					{
 						DECLARE_STATIC_PIXEL_SHADER(depthwrite_ps20);
 						SET_STATIC_PIXEL_SHADER_COMBO(COLOR_DEPTH, nColorDepth);
 						SET_STATIC_PIXEL_SHADER(depthwrite_ps20);
+						pShaderShadow->SetPixelShader("fdepthwrite_ps20", _pshIndex.GetIndex());
 					}
 				}
 			}
@@ -114,13 +116,14 @@ SHADER_DRAW
 				SET_STATIC_VERTEX_SHADER_COMBO(ONLY_PROJECT_POSITION, 0); //360 only combo, and this is a PC path
 				SET_STATIC_VERTEX_SHADER_COMBO(COLOR_DEPTH, nColorDepth);
 				SET_STATIC_VERTEX_SHADER(depthwrite_vs30);
-
+				pShaderShadow->SetVertexShader("fdepthwrite_vs30", _vshIndex.GetIndex());
 				pShaderShadow->EnableTexture(SHADER_SAMPLER0, true);
 				pShaderShadow->EnableSRGBRead(SHADER_SAMPLER0, true);
 
 				DECLARE_STATIC_PIXEL_SHADER(depthwrite_ps30);
 				SET_STATIC_PIXEL_SHADER_COMBO(COLOR_DEPTH, nColorDepth);
 				SET_STATIC_PIXEL_SHADER(depthwrite_ps30);
+				pShaderShadow->SetPixelShader("fdepthwrite_ps30", _pshIndex.GetIndex());
 			}
 #endif
 		}

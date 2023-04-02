@@ -590,6 +590,12 @@ namespace ShaderLib
 		ShaderUData* u = GetUShader(LUA);
 		const char* name = LUA->CheckString(2);
 		int type = max(min(LUA->CheckNumber(3), SHADER_PARAM_TYPE_MATRIX4X2), SHADER_PARAM_TYPE_TEXTURE);
+		const char* defvalue = LUA->GetString(4);
+		if (defvalue)
+		{
+			defvalue = strdup(defvalue);
+		}
+
 		ShaderLib::CShaderParam* param = NULL;
 		for (int i = u->Shader->s_ShaderParams.Count(); --i >= 0; )
 		{
@@ -597,6 +603,11 @@ namespace ShaderLib
 			if (strcmp(param->GetName(), name) == 0)
 			{
 				param->m_Info.m_Type = (ShaderParamType_t)type;
+				if (param->m_Info.m_pDefaultValue)
+				{
+					delete param->m_Info.m_pDefaultValue;
+				}
+				param->m_Info.m_pDefaultValue = defvalue;
 				LUA->PushNumber(param->operator int());
 				return 1;
 			}
@@ -614,9 +625,41 @@ namespace ShaderLib
 		//	}
 		//}
 
-		param = new ShaderLib::CShaderParam(u->Shader->s_ShaderParams, strdup(name), (ShaderParamType_t)type, "", "", 0);
+		param = new ShaderLib::CShaderParam(u->Shader->s_ShaderParams, strdup(name), (ShaderParamType_t)type, defvalue, "", 0);
 		LUA->PushNumber(param->operator int());
 		return 1;
+	}
+
+	LUA_LIB_FUNCTION(shader_methods, SetParamDefValue)
+	{
+		ShaderUData* u = GetUShader(LUA);
+		int paramindex = LUA->CheckNumber(2);
+		if (paramindex > (u->Shader->GetNumParams() - 1)) { luau_error(LUA, "attempt to use a missing parameter", 0) return 0; }
+		const char* defvalue = LUA->CheckString(3);
+		if (defvalue)
+		{
+			defvalue = strdup(defvalue);
+		}
+		
+		if (paramindex > NUM_SHADER_MATERIAL_VARS)
+		{
+			delete u->Shader->s_ShaderParams[paramindex]->m_Info.m_pDefaultValue;
+			u->Shader->s_ShaderParams[paramindex]->m_Info.m_pDefaultValue = defvalue;
+			return 0;
+		}
+
+		auto param = u->Shader->s_pShaderParamOverrides[paramindex];
+		if (!param)
+		{
+			u->Shader->s_pShaderParamOverrides[paramindex];
+			param = new ShaderLib::CShaderParam(u->Shader->s_pShaderParamOverrides, (ShaderMaterialVars_t)paramindex, (ShaderParamType_t)0, defvalue, 0,0);
+			return 0;
+		}
+		
+		delete param->m_Info.m_pDefaultValue;
+		param->m_Info.m_pDefaultValue = defvalue;
+	
+		return 0;
 	}
 
 	void BindTexture(ShaderUData* u, int sampler, int paramindex, TextureBind::TextureType type, bool isStandardTexture = false)
@@ -912,15 +955,8 @@ namespace ShaderLib
 		}
 
 		{
-			/*
-			#ifdef WIN64
-					static const char sign[] = "48 8B C4 48 89 58 18 55 56 41 54 41 56 41 57 48 83 EC 60 4D 8B F9 41 8B F0 4C 8B F1 48 85 D2 0F 84 ? ? ? ? 0F 57 C0 4C 8B C2 45 33 E4 66 0F 7F 40 A8 48 8D 50 10 44 89 60 A0 48 81 C1 B0 00 00 00 E8 ? ? ? ? 49 8B 5E 20 0F B7 28 48 85 DB 74 17 66 39 2B 75 09 39 73 04 0F 84 ? ? ? ? 48 8B 5B 48 48";
-			#else
-					static const char sign[] = "55 8B EC 8B 45 08 83 EC 28 56 57 8B F9 85 C0 0F 84 ? ? ? ? 50 8D 45 0A C7 45 EC 00 00 00 00 50 8D 4F 64 C7 45 F0 00 00 00 00 C7 45 E0 00 00 00 00 C7 45 E4 00 00 00 00 C7 45 E8 00 00 00 00 C7 45 FC 00 00 00 00 E8 ? ? ? ? 8B 77 18 8B 4D 0C 89 4D DC 66 8B 00 66 89 45 D8 85 F6 74 11 66 39 06 75 05";
-			#endif
-			*/
 			static const char sign[] =
-				HOOK_SIGN_CHROMIUM_X64("48 8B C4 48 89 58 18 55 56 41 54 41 56 41 57 48 83 EC 60 4D 8B F9 41 8B F0 4C 8B F1 48 85 D2 0F 84 ? ? ? ? 0F 57 C0 4C 8B C2 45 33 E4 66 0F 7F 40 A8 48 8D 50 10 44 89 60 A0 48 81 C1 B0 00 00 00 E8 ? ? ? ? 49 8B 5E 20 0F B7 28 48 85 DB 74 17 66 39 2B 75 09 39 73 04 0F 84 ? ? ? ? 48 8B 5B 48 48")
+				HOOK_SIGN_CHROMIUM_x64("48 8B C4 48 89 58 18 55 56 41 54 41 56 41 57 48 83 EC 60 4D 8B F9 41 8B F0 4C 8B F1 48 85 D2 0F 84 ? ? ? ? 0F 57 C0 4C 8B C2 45 33 E4 66 0F 7F 40 A8 48 8D 50 10 44 89 60 A0 48 81 C1 B0 00 00 00 E8 ? ? ? ? 49 8B 5E 20 0F B7 28 48 85 DB 74 17 66 39 2B 75 09 39 73 04 0F 84 ? ? ? ? 48 8B 5B 48 48")
 				HOOK_SIGN_x32("55 8B EC 8B 45 08 83 EC 28 56 57 8B F9 85 C0 0F 84 ? ? ? ? 50 8D 45 0A C7 45 EC 00 00 00 00 50 8D 4F 64 C7 45 F0 00 00 00 00 C7 45 E0 00 00 00 00 C7 45 E4 00 00 00 00 C7 45 E8 00 00 00 00 C7 45 FC 00 00 00 00 E8 ? ? ? ? 8B 77 18 8B 4D 0C 89 4D DC 66 8B 00 66 89 45 D8 85 F6 74 11 66 39 06 75 05")
 
 				CShaderManager_CreateVertexShader_decl CShaderManager_SetVertexShader = (CShaderManager_CreateVertexShader_decl)ScanSign(shaderapidx, sign, sizeof(sign) - 1);
@@ -942,13 +978,9 @@ namespace ShaderLib
 		if (!clientdll) { ShaderLibError("client.dll == NULL\n"); }
 
 		{
-			/*
-#ifdef CHROMIUM
-				"55 8B EC 83 EC 08 53 8B D9 8B ? ? ? ? ? 8B 01 8B 40 2C FF D0 84 C0 0F 84 ? ? ? ? 8B ? ? ? ? ? 8B 81 0C 10 00 00 89 45 F8 85 C0 74 16 6A 04 6A 00 68 ? ? ? ? 6A 00 68 ? ? ? ? FF 15 ? ? ? ? 8B";
-#endif
-*/
 			static const char sign[] =
-			HOOK_SIGN("55 8B EC 83 EC 08 53 8B D9 8B ? ? ? ? ? 8B 01 8B 40 2C FF D0 84 C0 0F 84 ? ? ? ? 8B ? ? ? ? ? 8B 81 0C 10 00 00 89 45 F8 85 C0 74 16 6A 04 6A 00 68 ? ? ? ? 6A 00 68 ? ? ? ? FF 15 ? ? ? ? 8B")
+			HOOK_SIGN_x32("55 8B EC 83 EC 08 53 8B D9 8B ? ? ? ? ? 8B 01 8B 40 2C FF D0 84 C0 0F 84 ? ? ? ? 8B ? ? ? ? ? 8B 81 0C 10 00 00 89 45 F8 85 C0 74 16 6A 04 6A 00 68 ? ? ? ? 6A 00 68 ? ? ? ? FF 15 ? ? ? ? 8B")
+			HOOK_SIGN_x64("40 56 48 83 EC 30 48 8B F1 48 8B ? ? ? ? ? 48 8B 01 FF 50 58 84 C0 0F 84 ? ? ? ? 48 8B ? ? ? ? ? 48 89 5C 24 40 48 89 6C 24 48 48 89 7C 24 50 8B A9 0C 10 00 00 4C 89 74 24 58 85 ED 74 24 C7")
 
 			void* DepthPass = ScanSign(clientdll, sign, sizeof(sign) - 1);
 			if (!DepthPass) { ShaderLibError("CBaseWorldView::SSAO_DepthPass == NULL\n"); return 0; }
@@ -959,14 +991,10 @@ namespace ShaderLib
 		if (!materialsystemdll) { ShaderLibError("materialsystem.dll == NULL\n"); }
 
 		{
-			/*
-#ifdef CHROMIUM
-				"55 8B EC 56 57 8B F9 8B 4D 08 85 C9 75 14 68 ? ? ? ? FF 15 ? ? ? ? 8B ? ? ? ? ? 83 C4 04 8B 01 FF 90 78 01 00 00 8B 17 8B CF 8B F0 FF 92 2C 03 00 00 3B C6 74 2F 8B 06 8B CE 8B 80 E0 00 00 00 FF D0 84 C0 75 14 8B 06 8B CE FF 90 5C 01 00 00";
-#endif
-*/
 			static const char sign[] =
-			HOOK_SIGN_CHROMIUM_X32("55 8B EC 56 57 8B F9 8B 4D 08 85 C9 75 14 68 ? ? ? ? FF 15 ? ? ? ? 8B ? ? ? ? ? 83 C4 04 8B 01 FF 90 78 01 00 00 8B 17 8B CF 8B F0 FF 92 2C 03 00 00 3B C6 74 2F 8B 06 8B CE 8B 80 E0 00 00 00 FF D0 84 C0 75 14 8B 06 8B CE FF 90 5C 01 00 00")
-			HOOK_SIGN("55 8B EC 56 57 8B F9 8B 4D 08 85 C9 75 22 39 ? ? ? ? ? 0F 84 ? ? ? ? 68 ? ? ? ? FF 15 ? ? ? ? 8B ? ? ? ? ? 83 C4 04 EB 0D 8B 01 FF 75 0C FF 90 D4 00 00 00 8B F0 8B 06 8B CE 53 FF 90 78 01 00 00 8B D8 8B CB 8B 13 FF 92 E8 00 00 00 85 C0 0F 8F ? ? ? ? 8B")
+			HOOK_SIGN_CHROMIUM_x32("55 8B EC 56 57 8B F9 8B 4D 08 85 C9 75 14 68 ? ? ? ? FF 15 ? ? ? ? 8B ? ? ? ? ? 83 C4 04 8B 01 FF 90 78 01 00 00 8B 17 8B CF 8B F0 FF 92 2C 03 00 00 3B C6 74 2F 8B 06 8B CE 8B 80 E0 00 00 00 FF D0 84 C0 75 14 8B 06 8B CE FF 90 5C 01 00 00")
+			HOOK_SIGN_x32("55 8B EC 56 57 8B F9 8B 4D 08 85 C9 75 22 39 ? ? ? ? ? 0F 84 ? ? ? ? 68 ? ? ? ? FF 15 ? ? ? ? 8B ? ? ? ? ? 83 C4 04 EB 0D 8B 01 FF 75 0C FF 90 D4 00 00 00 8B F0 8B 06 8B CE 53 FF 90 78 01 00 00 8B D8 8B CB 8B 13 FF 92 E8 00 00 00 85 C0 0F 8F ? ? ? ? 8B")
+			HOOK_SIGN_x64("48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 20 49 8B F0 48 8B F9 48 85 D2 75 14 48 8D ? ? ? ? ? FF 15 ? ? ? ? 48 8B ? ? ? ? ? 48 8B 02 48 8B CA FF 90 F0 02 00 00 48 8B 17 48 8B CF 48 8B D8 FF 92 58 06 00 00 48 3B C3 74 37 48 8B 13 48 8B CB FF 92 C0 01 00")
 
 			void* Bind = ScanSign(materialsystemdll, sign, sizeof(sign) - 1);
 			if (!Bind) { ShaderLibError("CMatRenderContextBase::Bind == NULL\n"); return 0; }

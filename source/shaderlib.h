@@ -55,6 +55,18 @@ namespace ShaderLib
 			m_Info.m_nFlags = nFlags;
 			m_Index = NUM_SHADER_MATERIAL_VARS + s_ShaderParams.Count();
 			s_ShaderParams.AddToTail(this);
+		}	
+
+		CShaderParam(CShaderParam** s_pShaderParamOverrides, ShaderMaterialVars_t var, ShaderParamType_t type, const char* pDefaultParam, const char* pHelp, int nFlags)
+		{
+			m_Info.m_pName = "override"; 
+			m_Info.m_Type = type; 
+			m_Info.m_pDefaultValue = pDefaultParam; 
+			m_Info.m_pHelp = pHelp; 
+			m_Info.m_nFlags = nFlags; 
+			AssertMsg(!s_pShaderParamOverrides[var], ("Shader parameter override duplicately defined!")); 
+			s_pShaderParamOverrides[var] = this; 
+			m_Index = var;
 		}
 		operator int() { return m_Index; }
 		const char* GetName() { return m_Info.m_pName; }
@@ -82,6 +94,7 @@ namespace ShaderLib
 			while (s_ShaderParams.Count() > 0)
 			{
 				auto param = s_ShaderParams.Head();
+				delete param->m_Info.m_pDefaultValue;
 				delete param->m_Info.m_pName;
 				s_ShaderParams.Remove(0);
 			}
@@ -168,15 +181,20 @@ namespace ShaderLib
 
 		void OnInitShaderInstance(IMaterialVar** params, IShaderInit* pShaderInit, const char* pMaterialName)
 		{
+			for (int i = 0; i < GetNumParams(); i++)
+			{
+				if (!params[i]->IsDefined() && GetParamDefault(i))
+				{
+					params[i]->SetStringValue(GetParamDefault(i));
+				}
+			}
+
 			for (int i = 0; i < PConstants.Count(); i++)
 			{
 				ShaderConstantF* constant = PConstants.Element(i);
 				if (constant->Type == constant->Param)
 				{
 					auto c = (reinterpret_cast<ShaderConstantP*>(constant));
-					//auto param = params[c->Param];
-
-					
 					c->IsValid = 1;
 				}
 			}
@@ -187,8 +205,6 @@ namespace ShaderLib
 				if (constant->Type == constant->Param)
 				{
 					auto c = (reinterpret_cast<ShaderConstantP*>(constant));
-					//auto param = params[c->Param];
-
 					c->IsValid = 1;
 				}
 			}
@@ -196,6 +212,7 @@ namespace ShaderLib
 			for (int i = Binds.Count(); --i >= 0; )
 			{
 				TextureBind* bind = Binds.Element(i);
+				bind->IsValid = true;
 				if (bind->IsStandardTexture) { continue; }
 				if (bind->ParamIndex > (GetNumParams() - 1))
 				{
@@ -233,6 +250,7 @@ namespace ShaderLib
 			int Sampler = 0;
 			TextureType Type = Texture;
 			bool IsStandardTexture = false;
+			bool IsValid = false;
 		};
 
 		struct ShaderConstantF
@@ -258,7 +276,7 @@ namespace ShaderLib
 			BOOL
 		};
 
-#define GENStandardConstantType(_) _(EYE_POS) _(CURTIME) _(LIGHT_INFO) _(AMBIENT_CUBE) _(FOG_PARAMS) _(SHADER_CONTROLS) _(DIFFUSE_MODULATION) _(INVERSE_VIEWMATRIX)
+#define GENStandardConstantType(_) _(EYE_POS) _(CURTIME) _(LIGHT_INFO) _(AMBIENT_CUBE) _(FOG_PARAMS) _(SHADER_CONTROLS) _(DIFFUSE_MODULATION)
 #define GENStandardConstantTypeEnum(v) v,
 		struct ShaderConstantP
 		{
@@ -287,8 +305,10 @@ namespace ShaderLib
 
 		LightState_t lightState;
 		VMatrix viewMatrix, projectionMatrix, viewProjectionMatrix, inverseViewProjectionMatrix;
+
 		RetValueType StdToValue(IShaderDynamicAPI* pShaderAPI, ShaderConstantP* param, IMaterialVar** params, int vsh)
 		{
+			CMatRenderContextPtr pRenderContext(g_pMaterialSystem);
 			switch (param->Param)
 			{
 			case ShaderConstantP::EYE_POS:
@@ -318,22 +338,6 @@ namespace ShaderLib
 				fVals[2] = (pShaderAPI->GetPixelFogCombo() == 1 && (pShaderAPI->GetSceneFogMode() == MATERIAL_FOG_LINEAR_BELOW_FOG_Z)) ? 1 : 0;
 				fVals[3] = IS_FLAG_SET(MATERIAL_VAR_VERTEXALPHA) ? 1 : 0;
 				return FLOAT;
-				break;
-			case ShaderConstantP::INVERSE_VIEWMATRIX:
-				
-				pShaderAPI->GetMatrix(MATERIAL_VIEW, viewMatrix.Base());
-				pShaderAPI->GetMatrix(MATERIAL_PROJECTION, projectionMatrix.Base());
-				MatrixMultiply(projectionMatrix, viewMatrix, viewProjectionMatrix);
-				MatrixInverseGeneral(viewProjectionMatrix, inverseViewProjectionMatrix);
-				if (vsh)
-				{
-					pShaderAPI->SetVertexShaderConstant(param->Index, inverseViewProjectionMatrix.Base(), 4);
-				}
-				else
-				{
-					pShaderAPI->SetPixelShaderConstant(param->Index, inverseViewProjectionMatrix.Base(), 4);
-				}
-				return NONE;
 				break;
 			case ShaderConstantP::DIFFUSE_MODULATION:
 				SetModulationPixelShaderDynamicState_LinearColorSpace(param->Index);
@@ -433,6 +437,7 @@ namespace ShaderLib
 				else // not flashlight pass
 				{
 					SetBlendingShadowState(nBlendType);
+
 				}
 
 				for (int i = 0; i <= ActiveSamplers; i++)
@@ -584,6 +589,7 @@ namespace ShaderLib
 				for (int i = 0; i < Binds.Count(); i++)
 				{
 					TextureBind* bind = Binds.Element(i);
+					if (!bind->IsValid) { continue; };
 					if (bind->IsStandardTexture)
 					{
 						pShaderAPI->BindStandardTexture((Sampler_t)bind->Sampler, (StandardTextureId_t)bind->ParamIndex);
