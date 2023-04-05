@@ -53,6 +53,8 @@ namespace ShaderLib
 	IShaderShadow* g_pShaderShadow = NULL;
 	CShaderSystem* g_pCShaderSystem = NULL;
 	CShaderSystem::ShaderDLLInfo_t* g_pShaderLibDLL = NULL;
+	IDirect3DDevice9* m_pD3DDevice = NULL;
+
 	int g_pShaderLibDLLIndex = 0;
 
 	const char* g_sDigits[6] = { "0", "1", "2", "3", "4", "5" };
@@ -173,15 +175,15 @@ namespace ShaderLib
 		lookup.m_Name = g_pShaderManager->m_ShaderSymbolTable.AddString(name);
 		lookup.m_nStaticIndex = INT_MIN;
 
-		auto index = g_pShaderManager->m_PixelShaderDict.Find(lookup);
-		if (index != g_pShaderManager->m_PixelShaderDict.InvalidIndex())
+		auto index = GetPixelShaderDict().Find(lookup);
+		if (index != GetPixelShaderDict().InvalidIndex())
 		{
 			auto hash = HashString(program);
-			if (hash == g_pShaderManager->m_PixelShaderDict[index].m_nDataOffset)
+			if (hash == GetPixelShaderDict()[index].m_nDataOffset)
 			{
 				return 0;
 			}
-			g_pShaderManager->m_PixelShaderDict[index].m_nDataOffset = hash;
+			GetPixelShaderDict()[index].m_nDataOffset = hash;
 		}
 
 		HardwareShader_t* shaders = NULL;
@@ -197,6 +199,11 @@ namespace ShaderLib
 		D3DXMACRO NUM_LIGHTS = D3DXMACRO{ "NUM_LIGHTS", g_sDigits[0] };
 		D3DXMACRO FLASHLIGHT = D3DXMACRO{ "FLASHLIGHT", g_sDigits[0] };
 		D3DXMACRO SM = D3DXMACRO{ "SHADER_MODEL_PS_3_0", g_sDigits[1] };
+#ifdef WIN64
+		D3DXMACRO X64 = D3DXMACRO{ "X64", g_sDigits[1] };
+#else
+		D3DXMACRO X64 = D3DXMACRO{ "X64", g_sDigits[0] };
+#endif
 		D3DXMACRO ScreenW = D3DXMACRO{ "SCR_W", w.c_str() };
 		D3DXMACRO ScreenH = D3DXMACRO{ "SCR_H", h.c_str() };
 
@@ -207,6 +214,7 @@ namespace ShaderLib
 		macroDefines.push_back(ScreenH);
 		macroDefines.push_back(ScreenSize);
 		macroDefines.push_back(SM);
+		macroDefines.push_back(X64);
 		macroDefines.push_back(D3DXMACRO_NULL);
 
 		int lineOffset = 0;
@@ -226,6 +234,9 @@ namespace ShaderLib
 				IShaderBuffer* cs_output = NULL;
 				if (!CompileShader(program, programLen, "ps_3_0", &macroDefines.front(), (void**)&cs_output, flags, lineOffset))
 				{
+					if (index != GetPixelShaderDict().InvalidIndex()) { GetPixelShaderDict()[index].m_nDataOffset = 0; }
+					w.~basic_string();
+					h.~basic_string();
 					ShaderCompilationError(LUA, comboInd, (char*)cs_output, name, (IShaderBuffer**)shaders);
 				}
 				if (!shaders) { shaders = new HardwareShader_t[combosCount]; }
@@ -237,19 +248,20 @@ namespace ShaderLib
 		for (int i = 0; i < combosCount; i++)
 		{
 			IShaderBuffer* bf = (IShaderBuffer*)shaders[i];
-			shaders[i] = g_pShaderManager->m_RawPixelShaderDict[(intp)g_pShaderManager->CreatePixelShader(bf)];
+			auto ind = (intp)g_pShaderManager->CreatePixelShader(bf);
+			shaders[i] = g_pShaderManager->m_RawPixelShaderDict[ind];
 			bf->Release();
 		}
 
-		if (index == g_pShaderManager->m_PixelShaderDict.InvalidIndex())
+		if (index == GetPixelShaderDict().InvalidIndex())
 		{
 			lookup.m_ShaderStaticCombos.m_pHardwareShaders = shaders;
 			lookup.m_ShaderStaticCombos.m_nCount = combosCount;
-			g_pShaderManager->m_PixelShaderDict.AddToTail(lookup);
+			GetPixelShaderDict().AddToTail(lookup);
 		}
 		else
 		{
-			auto lp = &g_pShaderManager->m_PixelShaderDict[index];
+			auto lp = &GetPixelShaderDict()[index];
 			auto combos = &lp->m_ShaderStaticCombos;
 			for (int i = 0; i < combos->m_nCount; i++)
 			{
@@ -277,15 +289,15 @@ namespace ShaderLib
 		lookup.m_Name = g_pShaderManager->m_ShaderSymbolTable.AddString(name);
 		lookup.m_nStaticIndex = INT_MIN;
 
-		auto index = g_pShaderManager->m_VertexShaderDict.Find(lookup);
-		if (index != g_pShaderManager->m_VertexShaderDict.InvalidIndex())
+		auto index = GetVertexShaderDict().Find(lookup);
+		if (index != GetVertexShaderDict().InvalidIndex())
 		{
 			auto hash = HashString(program);
-			if (hash == g_pShaderManager->m_VertexShaderDict[index].m_nDataOffset)
+			if (hash == GetVertexShaderDict()[index].m_nDataOffset)
 			{
 				return 0;
 			}
-			g_pShaderManager->m_VertexShaderDict[index].m_nDataOffset = hash;
+			GetVertexShaderDict()[index].m_nDataOffset = hash;
 		}
 
 		HardwareShader_t* shaders = NULL;
@@ -322,6 +334,8 @@ namespace ShaderLib
 				IShaderBuffer* cs_output = NULL;
 				if (!CompileShader(program, programLen, "vs_3_0", &macroDefines.front(), (void**)&cs_output, flags, lineOffset))
 				{
+					if (index != GetVertexShaderDict().InvalidIndex()) { GetVertexShaderDict()[index].m_nDataOffset = 0; }
+					GetVertexShaderDict()[index].m_nDataOffset = 0;
 					ShaderCompilationError(LUA, comboInd, (char*)cs_output, name, (IShaderBuffer**)shaders);
 				}
 				if (!shaders) { shaders = new HardwareShader_t[combosCount]; }
@@ -337,15 +351,15 @@ namespace ShaderLib
 			bf->Release();
 		}
 
-		if (index == g_pShaderManager->m_VertexShaderDict.InvalidIndex())
+		if (index == GetVertexShaderDict().InvalidIndex())
 		{
 			lookup.m_ShaderStaticCombos.m_pHardwareShaders = shaders;
 			lookup.m_ShaderStaticCombos.m_nCount = combosCount;
-			g_pShaderManager->m_VertexShaderDict.AddToTail(lookup);
+			GetVertexShaderDict().AddToTail(lookup);
 		}
 		else
 		{
-			auto lp = &g_pShaderManager->m_VertexShaderDict[index];
+			auto lp = &GetVertexShaderDict()[index];
 			auto combos = &lp->m_ShaderStaticCombos;
 			for (int i = 0; i < combos->m_nCount; i++)
 			{
@@ -740,7 +754,7 @@ namespace ShaderLib
 	{
 		ShaderUData* u = GetUShader(LUA);
 		const char* name = LUA->CheckString(2);
-		auto shader = FindShader(name, g_pShaderManager->m_PixelShaderDict);
+		auto shader = FindShader(name, GetPixelShaderDict());
 		if (!shader)
 		{
 			luau_error(LUA, "attempt to set a missing pixel shader(%s)", name);
@@ -756,7 +770,7 @@ namespace ShaderLib
 	{
 		ShaderUData* u = GetUShader(LUA);
 		const char* name = LUA->CheckString(2);
-		auto shader = FindShader(name, g_pShaderManager->m_VertexShaderDict);
+		auto shader = FindShader(name, GetVertexShaderDict());
 		if (!shader)
 		{
 			luau_error(LUA, "attempt to set a missing vertex shader(%s)", name);
@@ -877,13 +891,87 @@ namespace ShaderLib
 		return 0;
 	}
 
-	Define_thiscall_Hook(VertexShader_t, CShaderManager_CreateVertexShader, CShaderManager*, const char* pVertexShaderFile, int nStaticVshIndex, char* debugLabel)
+	Define_method_Hook(VertexShader_t, CShaderManager_CreateVertexShader, CShaderManager*, const char* pVertexShaderFile, int nStaticVshIndex, char* debugLabel)
 	{
-		g_pShaderManager = _this;
-		return (int)INVALID_SHADER;// hook.GetTrampoline<CShaderManager_SetVertexShaderDecl>()(_this, pVertexShaderFile, nStaticVshIndex, debugLabel);
+		if (!g_pShaderManager)
+		{
+			g_pShaderManager = _this;
+#ifndef WIN64
+			CShaderManager_CreateVertexShader_hook.Destroy();
+#endif
+			return  (int)INVALID_SHADER;
+		}
+
+		CShaderManager::ShaderLookup_t lookup;
+		lookup.m_Name = g_pShaderManager->m_ShaderSymbolTable.AddString(pVertexShaderFile);
+		lookup.m_nStaticIndex = nStaticVshIndex;
+		auto l = GetVertexShaderDict().Find(lookup);
+		if (l != GetVertexShaderDict().InvalidIndex())
+		{
+			return l;
+		}
+
+		return CShaderManager_CreateVertexShader_trampoline()(_this, pVertexShaderFile, nStaticVshIndex, debugLabel);
 	}
 
-	Define_thiscall_Hook(void, CShaderManager_PurgeUnusedVertexAndPixelShaders, CShaderManager*)
+#ifdef WIN64
+
+	Define_method_Hook(void, Dx9Device_EndScene, IDirect3DDevice9*, )
+	{
+		m_pD3DDevice = _this;
+		Dx9Device_EndScene_hook.Destroy();
+		return;
+	}
+
+	Define_method_Hook(VertexShader_t, CShaderManager_CreatePixelShader, CShaderManager*, const char* pVertexShaderFile, int nStaticVshIndex, char* debugLabel)
+	{
+		CShaderManager::ShaderLookup_t lookup;
+		lookup.m_Name = g_pShaderManager->m_ShaderSymbolTable.AddString(pVertexShaderFile);
+		lookup.m_nStaticIndex = nStaticVshIndex;
+		auto l = GetPixelShaderDict().Find(lookup);
+		//Msg("%s %i %i\n", pVertexShaderFile, nStaticVshIndex, l == GetPixelShaderDict().InvalidIndex());
+		if (l != GetPixelShaderDict().InvalidIndex())
+		{
+			return l;
+		}
+
+		return CShaderManager_CreatePixelShader_trampoline()(_this, pVertexShaderFile, nStaticVshIndex, debugLabel);
+
+	}
+
+	Define_method_Hook(void, CShaderManager_SetVertexShader, CShaderManager*, VertexShader_t shader)
+	{
+		if (b_isEgsmShader)
+		{
+			CShaderManager::ShaderLookup_t& lookup = GetVertexShaderDict()[shader];
+			HardwareShader_t& dxshader = lookup.m_ShaderStaticCombos.m_pHardwareShaders[_this->m_nVertexShaderIndex];
+			m_pD3DDevice->SetVertexShader((IDirect3DPixelShader9*)dxshader);
+			_this->m_HardwareVertexShader = dxshader;
+			return;
+		}
+		CShaderManager_SetVertexShader_trampoline()(_this, shader);
+		return;
+	}
+
+	Define_method_Hook(void, CShaderManager_SetPixelShader, CShaderManager*, PixelShader_t shader)
+	{
+		if (b_isEgsmShader)
+		{
+			CShaderManager::ShaderLookup_t& lookup = GetPixelShaderDict()[shader];
+			HardwareShader_t& dxshader = lookup.m_ShaderStaticCombos.m_pHardwareShaders[_this->m_nVertexShaderIndex];
+			m_pD3DDevice->SetPixelShader((IDirect3DVertexShader9*)dxshader);
+			_this->m_HardwarePixelShader = dxshader;
+			return;
+
+		}
+
+		CShaderManager_SetPixelShader_trampoline()(_this, shader);
+		return;
+	}
+
+#endif
+
+	Define_method_Hook(void, CShaderManager_PurgeUnusedVertexAndPixelShaders, CShaderManager*)
 	{
 		if (!g_pShaderManager) { return; }
 		return;
@@ -891,7 +979,7 @@ namespace ShaderLib
 	
 	bool inDepthPass = false;
 	IMaterial* transpMat = NULL;
-	Define_thiscall_Hook(void, CMatRenderContextBase_Bind, void*, IMaterial* mat, void* data)
+	Define_method_Hook(void, CMatRenderContextBase_Bind, void*, IMaterial* mat, void* data)
 	{
 		if (inDepthPass && strcmp(mat->GetShaderName(), "DepthWrite") != 0)
 		{
@@ -902,7 +990,25 @@ namespace ShaderLib
 		return;
 	}
 	
-	Define_thiscall_Hook(void, CBaseWorldView_SSAO_DepthPass, void*)
+	Define_method_Hook(void, CShaderSystem_InitShaderParameters, CShaderSystem*, IShader* pShader, IMaterialVar** params, const char* pMaterialName)
+	{
+		//Msg("%s %i\n", pShader->GetName(), pShader->GetFlags());
+		if (pShader->GetFlags() == -256)
+		{
+			for (int i = 0; i < pShader->GetNumParams(); i++)
+			{
+				if (!params[i]->IsDefined() && pShader->GetParamDefault(i))
+				{
+					params[i]->SetStringValue(pShader->GetParamDefault(i));
+					//Msg("\t%s %s\n", pShader->GetParamName(i), pShader->GetParamDefault(i));
+				}
+			}
+		}
+		CShaderSystem_InitShaderParameters_trampoline()(_this, pShader, params, pMaterialName);
+		return;
+	}	
+
+	Define_method_Hook(void, CBaseWorldView_SSAO_DepthPass, void*)
 	{
 		if (!transpMat)
 		{
@@ -959,14 +1065,37 @@ namespace ShaderLib
 				HOOK_SIGN_CHROMIUM_x64("48 8B C4 48 89 58 18 55 56 41 54 41 56 41 57 48 83 EC 60 4D 8B F9 41 8B F0 4C 8B F1 48 85 D2 0F 84 ? ? ? ? 0F 57 C0 4C 8B C2 45 33 E4 66 0F 7F 40 A8 48 8D 50 10 44 89 60 A0 48 81 C1 B0 00 00 00 E8 ? ? ? ? 49 8B 5E 20 0F B7 28 48 85 DB 74 17 66 39 2B 75 09 39 73 04 0F 84 ? ? ? ? 48 8B 5B 48 48")
 				HOOK_SIGN_x32("55 8B EC 8B 45 08 83 EC 28 56 57 8B F9 85 C0 0F 84 ? ? ? ? 50 8D 45 0A C7 45 EC 00 00 00 00 50 8D 4F 64 C7 45 F0 00 00 00 00 C7 45 E0 00 00 00 00 C7 45 E4 00 00 00 00 C7 45 E8 00 00 00 00 C7 45 FC 00 00 00 00 E8 ? ? ? ? 8B 77 18 8B 4D 0C 89 4D DC 66 8B 00 66 89 45 D8 85 F6 74 11 66 39 06 75 05")
 
-				CShaderManager_CreateVertexShader_decl CShaderManager_SetVertexShader = (CShaderManager_CreateVertexShader_decl)ScanSign(shaderapidx, sign, sizeof(sign) - 1);
-			if (!CShaderManager_SetVertexShader) { ShaderLibError("CShaderManager::SetVertexShader == NULL\n"); return 0; }
+				CShaderManager_CreateVertexShader_decl CShaderManager_CreateVertexShader = (CShaderManager_CreateVertexShader_decl)ScanSign(shaderapidx, sign, sizeof(sign) - 1);
+			if (!CShaderManager_CreateVertexShader) { ShaderLibError("CShaderManager::SetVertexShader == NULL\n"); return 0; }
 
-			Setup_Hook(CShaderManager_CreateVertexShader, CShaderManager_SetVertexShader)
+			Setup_Hook(CShaderManager_CreateVertexShader, CShaderManager_CreateVertexShader)
 				g_pShaderShadow->SetVertexShader("HEREHEREHEREHERE", 1010);
-			CShaderManager_CreateVertexShader_hook.Destroy();
-
+			//CShaderManager_CreateVertexShader_hook.Disable();
 			if (!g_pShaderManager) { ShaderLibError("g_pShaderManager == NULL\n"); return 0; }
+
+#ifdef WIN64
+			{
+				Setup_Hook(CShaderManager_CreatePixelShader, GetVTable(g_pShaderManager)[6]);
+				Setup_Hook(CShaderManager_SetVertexShader, GetVTable(g_pShaderManager)[9]);
+				Setup_Hook(CShaderManager_SetPixelShader, GetVTable(g_pShaderManager)[10]);
+
+				auto d3d9 = GetModuleHandle("d3d9.dll");
+				if (!d3d9)
+				{
+					ShaderLibError("d3d9.dll == NULL\n");
+				}
+
+				const char sign[] =
+					HOOK_SIGN_x64("40 53 48 83 EC 40 48 C7 44 24 28 FE FF FF FF 48 8B D9 48 8B C1 4C 8D 41 08 48 F7 D8 48 1B D2 49 23 D0 45 33 C0 48 8D 4C 24 30 E8 ? ? ? ? 90 8B 43 4C 83 E0 02 84 C0 0F 85 ? ? ? ? 8B 83 DC 40 00 00 A8 01 0F 84 ? ? ? ? F6 83 D8 40 00 00 04 0F 85 ? ? ? ? 83 E0 FE 89 83 DC 40 00 00 48 8B 8B E8 40 00 00 83 A1 28 01 00 00 00 48 8B 01 33")
+
+					void* ptr = ScanSign(d3d9, sign, sizeof(sign) - 1);
+				if (!ptr) { ShaderLibError("Dx9Device::EndScene == NULL\n"); return 0; }
+
+				Setup_Hook(Dx9Device_EndScene, ptr);
+				g_pShaderDevice->Present();
+			}
+#endif
+
 		}
 
 		D3DXCompileShader = (D3DXCompileShaderDecl*)GetProcAddress(d3dx9_40, "D3DXCompileShader");
@@ -1001,11 +1130,13 @@ namespace ShaderLib
 			Setup_Hook(CMatRenderContextBase_Bind, Bind)
 		}
 
+		Setup_Hook(CShaderManager_PurgeUnusedVertexAndPixelShaders, GetVTable(g_pShaderManager)[15])
+		Setup_Hook(CShaderSystem_InitShaderParameters, GetVTable(g_pCShaderSystem)[14])
+		
 		g_pShaderLibDLLIndex = g_pCShaderSystem->m_ShaderDLLs.AddToTail();
 		g_pShaderLibDLL = &g_pCShaderSystem->m_ShaderDLLs[g_pShaderLibDLLIndex];
 		g_pShaderLibDLL->m_pFileName = strdup("egsm_shaders.dll");
 		g_pShaderLibDLL->m_bModShaderDLL = true;
-	
 		//IShaderDynamicAPI* sapi = (IShaderDynamicAPI*)((IShaderAPI030*)(g_pShaderApi));
 
 		for (int i = 0; i < g_pCShaderSystem->m_ShaderDLLs.Count(); i++)
@@ -1020,9 +1151,6 @@ namespace ShaderLib
 				}
 			}
 		}
-
-		Setup_Hook(CShaderManager_PurgeUnusedVertexAndPixelShaders, GetVTable(g_pShaderManager)[15])
-
 		ConColorMsg(msgc, "-Succ\n");
 	}
 
@@ -1230,13 +1358,13 @@ namespace ShaderLib
 		if (!g_pShaderManager) { return; }
 
 		{
-			intp pshIndex = g_pShaderManager->m_PixelShaderDict.Head();
+			intp pshIndex = GetPixelShaderDict().Head();
 			intp pshIndexPrev = 0;
-			while (pshIndex != g_pShaderManager->m_PixelShaderDict.InvalidIndex())
+			while (pshIndex != GetPixelShaderDict().InvalidIndex())
 			{
-				CShaderManager::ShaderLookup_t& lookup = g_pShaderManager->m_PixelShaderDict[pshIndex];
+				CShaderManager::ShaderLookup_t& lookup = GetPixelShaderDict()[pshIndex];
 				pshIndexPrev = pshIndex;
-				pshIndex = g_pShaderManager->m_PixelShaderDict.Next(pshIndex);
+				pshIndex = GetPixelShaderDict().Next(pshIndex);
 				if (lookup.m_nStaticIndex == INT_MIN)
 				{
 					auto combos = &lookup.m_ShaderStaticCombos;
@@ -1246,19 +1374,19 @@ namespace ShaderLib
 						g_pShaderManager->DestroyPixelShader((PixelShaderHandle_t)g_pShaderManager->m_RawPixelShaderDict.Find(pixelshader));
 					}
 					delete combos->m_pHardwareShaders;
-					g_pShaderManager->m_PixelShaderDict.Remove(pshIndexPrev);
+					GetPixelShaderDict().Remove(pshIndexPrev);
 				}
 			}
 		}
 
 		{
-			intp vshIndex = g_pShaderManager->m_VertexShaderDict.Head();
+			intp vshIndex = GetVertexShaderDict().Head();
 			intp vshIndexPrev = 0;
-			while (vshIndex != g_pShaderManager->m_VertexShaderDict.InvalidIndex())
+			while (vshIndex != GetVertexShaderDict().InvalidIndex())
 			{
-				CShaderManager::ShaderLookup_t& lookup = g_pShaderManager->m_VertexShaderDict[vshIndex];
+				CShaderManager::ShaderLookup_t& lookup = GetVertexShaderDict()[vshIndex];
 				vshIndexPrev = vshIndex;
-				vshIndex = g_pShaderManager->m_VertexShaderDict.Next(vshIndex);
+				vshIndex = GetVertexShaderDict().Next(vshIndex);
 				if (lookup.m_nStaticIndex == INT_MIN)
 				{
 					auto combos = &lookup.m_ShaderStaticCombos;
@@ -1268,7 +1396,7 @@ namespace ShaderLib
 						g_pShaderManager->DestroyVertexShader((VertexShaderHandle_t)g_pShaderManager->m_RawVertexShaderDict.Find(vertexshader));
 					}
 					delete combos->m_pHardwareShaders;
-					g_pShaderManager->m_VertexShaderDict.Remove(vshIndexPrev);
+					GetVertexShaderDict().Remove(vshIndexPrev);
 				}
 			}
 		}

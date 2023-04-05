@@ -25,14 +25,35 @@ namespace ShaderLib
 	void MenuDeinit(GarrysMod::Lua::ILuaBase* LUA);
 	void LuaInit(GarrysMod::Lua::ILuaBase* LUA);
 	void LuaDeinit(GarrysMod::Lua::ILuaBase* LUA);
-	static CUtlFixedLinkedList< CShaderManager::ShaderLookup_t > lm_VertexShaderDict;
-	static CUtlFixedLinkedList< CShaderManager::ShaderLookup_t > lm_PixelShaderDict;
+
+	static CUtlFixedLinkedList< CShaderManager::ShaderLookup_t > g_VertexShaderDict;
+	static CUtlFixedLinkedList< CShaderManager::ShaderLookup_t > g_PixelShaderDict;
+
+	inline CUtlFixedLinkedList< CShaderManager::ShaderLookup_t >& GetVertexShaderDict()
+	{
+#ifdef WIN64
+		return g_VertexShaderDict;
+#else 
+		return g_pShaderManager->m_VertexShaderDict;
+#endif
+	}
+
+	inline CUtlFixedLinkedList< CShaderManager::ShaderLookup_t >& GetPixelShaderDict()
+	{
+#ifdef WIN64
+		return g_PixelShaderDict;
+#else 
+		return g_pShaderManager->m_PixelShaderDict;
+#endif
+	}
+
+	static bool b_isEgsmShader = false;
 
 	static float fVals[4];
 	static BOOL  bVals[4];
 
 	typedef CBaseVSShader CBaseClass;
-	static int s_nFlags = 0;
+	static int s_nFlags = -256;
 
 	class CShaderParam
 	{
@@ -299,7 +320,7 @@ namespace ShaderLib
 		{
 			char Index = 0;
 			ShaderConstantF::ShaderConstantType Type : 4;
-			int RowsCount;
+			int RowsCount = 0;
 			float Vals[16];
 		};
 
@@ -402,6 +423,7 @@ namespace ShaderLib
 		{
 			if (!VShader || !PShader) { Draw(false); return; }
 			bool bHasFlashlight = SupportsFlashlight && UsingFlashlight(params);
+			
 
 			bool bHasBaseTexture = params[BASETEXTURE]->IsTexture();
 			bool bIsAlphaTested = IS_FLAG_SET(MATERIAL_VAR_ALPHATEST) != 0;
@@ -745,7 +767,9 @@ namespace ShaderLib
 				pRenderContext->SetStencilWriteMask(StencilWriteMask);
 				pRenderContext->CullMode(CullMode);
 			}
+			b_isEgsmShader = true;
 			Draw();
+			b_isEgsmShader = false;
 			if (!IsSnapshotting())
 			{
 				pRenderContext->CullMode(MATERIAL_CULLMODE_CCW);

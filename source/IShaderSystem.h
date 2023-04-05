@@ -386,8 +386,8 @@ public:
 	bool			m_bForceUsingGraphicsReturnTrue;
 };
 
-typedef int VertexShader_t;
-typedef int PixelShader_t;
+typedef intp VertexShader_t;
+typedef intp PixelShader_t;
 
 abstract_class IShaderManager
 {

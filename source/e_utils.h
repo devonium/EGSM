@@ -14,11 +14,21 @@ void* ScanSign(const void* handle, const char* sig, size_t len, const void* star
 
 #define GetVTable(ptr) ((void***)ptr)[0]
 
-#define Define_thiscall_Hook(rettype, name, thistype, ...) \
+#ifdef WIN64
+
+#define Define_method_Hook(rettype, name, thistype, ...) \
+	Detouring::Hook name##_hook; \
+	typedef rettype (__fastcall* name##_decl)(thistype _this, __VA_ARGS__); \
+	inline name##_decl name##_trampoline() { return name##_hook.GetTrampoline<name##_decl>();}\
+	rettype __fastcall name##_detour(thistype _this, __VA_ARGS__) 
+#else
+
+#define Define_method_Hook(rettype, name, thistype, ...) \
 	Detouring::Hook name##_hook; \
 	typedef rettype (__thiscall* name##_decl)(thistype _this, __VA_ARGS__); \
 	inline name##_decl name##_trampoline() { return name##_hook.GetTrampoline<name##_decl>();}\
 	rettype __fastcall name##_detour(thistype _this, void* edx, __VA_ARGS__) 
+#endif
 
 #define Define_Hook(rettype, name, ...) \
 	Detouring::Hook name##_hook; \
