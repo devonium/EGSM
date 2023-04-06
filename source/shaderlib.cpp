@@ -999,8 +999,8 @@ namespace ShaderLib
 			{
 				if (!params[i]->IsDefined() && pShader->GetParamDefault(i))
 				{
-					params[i]->SetStringValue(pShader->GetParamDefault(i));
-					//Msg("\t%s %s\n", pShader->GetParamName(i), pShader->GetParamDefault(i));
+					params[i]->SetValueAutodetectType(pShader->GetParamDefault(i));
+					//Msg("\t%s %s %s\n", pShader->GetParamName(i), pShader->GetParamDefault(i), params[i]->GetStringValue());
 				}
 			}
 		}
@@ -1151,6 +1151,7 @@ namespace ShaderLib
 				}
 			}
 		}
+
 		ConColorMsg(msgc, "-Succ\n");
 	}
 
@@ -1159,18 +1160,14 @@ namespace ShaderLib
 		int iW, iH;
 		g_pMaterialSystem->GetBackBufferDimensions(iW, iH);
 
-		LUA->PushSpecial(SPECIAL_GLOB);
-		LUA->GetField(-1, "GetRenderTargetEx");
-			LUA->PushString("_rt_ResolvedFullFrameDepth");
-			LUA->PushNumber(iW);
-			LUA->PushNumber(iH);
-			LUA->PushNumber(RT_SIZE_FULL_FRAME_BUFFER);
-			LUA->PushNumber(MATERIAL_RT_DEPTH_ONLY);
-			LUA->PushNumber(0);
-			LUA->PushNumber(0);
-			LUA->PushNumber(IMAGE_FORMAT_RGBA32323232F);
-		LUA->Call(8, 0);
-		LUA->Pop();
+
+		g_pMaterialSystem->BeginRenderTargetAllocation();
+		g_pMaterialSystem->CreateNamedRenderTargetTextureEx2("_rt_ResolvedFullFrameDepth", 1, 1,
+			RT_SIZE_FULL_FRAME_BUFFER, IMAGE_FORMAT_RGBA32323232F, MATERIAL_RT_DEPTH_SEPARATE,
+			TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT | TEXTUREFLAGS_POINTSAMPLE,
+			CREATERENDERTARGETFLAGS_NOEDRAM);
+	
+		g_pMaterialSystem->EndRenderTargetAllocation();
 
 		LUA->PushSpecial(SPECIAL_GLOB);
 		LUA->CreateTable();

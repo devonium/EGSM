@@ -34,7 +34,7 @@ void* ScanSign(const void* handle, const char* sig, size_t len, const void* star
 	Detouring::Hook name##_hook; \
 	typedef rettype (* name##_decl)(__VA_ARGS__); \
 	inline name##_decl name##_trampoline() { return name##_hook.GetTrampoline<name##_decl>();}\
-	rettype __fastcall name##_detour(__VA_ARGS__) 
+	rettype name##_detour(__VA_ARGS__) 
 
 
 #define Setup_Hook(name, targ) \
