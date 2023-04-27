@@ -916,13 +916,6 @@ namespace ShaderLib
 
 #ifdef WIN64
 
-	Define_method_Hook(void, Dx9Device_EndScene, IDirect3DDevice9*, )
-	{
-		m_pD3DDevice = _this;
-		Dx9Device_EndScene_hook.Destroy();
-		return;
-	}
-
 	Define_method_Hook(VertexShader_t, CShaderManager_CreatePixelShader, CShaderManager*, const char* pVertexShaderFile, int nStaticVshIndex, char* debugLabel)
 	{
 		CShaderManager::ShaderLookup_t lookup;
@@ -1025,6 +1018,14 @@ namespace ShaderLib
 		return;
 	}
 
+#ifdef WIN64
+	struct CShaderAPIDx8
+	{
+		char pad[0x120];
+		IDirect3DDevice9* m_DeviceWrapper;
+	};
+#endif
+
 	int MenuInit(GarrysMod::Lua::ILuaBase* LUA)
 	{
 		static Color msgc(100, 255, 100, 255);
@@ -1079,20 +1080,8 @@ namespace ShaderLib
 				Setup_Hook(CShaderManager_SetVertexShader, GetVTable(g_pShaderManager)[9]);
 				Setup_Hook(CShaderManager_SetPixelShader, GetVTable(g_pShaderManager)[10]);
 
-				auto d3d9 = GetModuleHandle("d3d9.dll");
-				if (!d3d9)
-				{
-					ShaderLibError("d3d9.dll == NULL\n");
-				}
-
-				const char sign[] =
-					HOOK_SIGN_x64("40 53 48 83 EC 40 48 C7 44 24 28 FE FF FF FF 48 8B D9 48 8B C1 4C 8D 41 08 48 F7 D8 48 1B D2 49 23 D0 45 33 C0 48 8D 4C 24 30 E8 ? ? ? ? 90 8B 43 4C 83 E0 02 84 C0 0F 85 ? ? ? ? 8B 83 DC 40 00 00 A8 01 0F 84 ? ? ? ? F6 83 D8 40 00 00 04 0F 85 ? ? ? ? 83 E0 FE 89 83 DC 40 00 00 48 8B 8B E8 40 00 00 83 A1 28 01 00 00 00 48 8B 01 33")
-
-					void* ptr = ScanSign(d3d9, sign, sizeof(sign) - 1);
-				if (!ptr) { ShaderLibError("Dx9Device::EndScene == NULL\n"); return 0; }
-
-				Setup_Hook(Dx9Device_EndScene, ptr);
-				g_pShaderDevice->Present();
+				m_pD3DDevice = ((CShaderAPIDx8*)g_pShaderApi)->m_DeviceWrapper;
+				if (!m_pD3DDevice) { ShaderLibError("m_pD3DDevice == NULL"); }
 			}
 #endif
 
