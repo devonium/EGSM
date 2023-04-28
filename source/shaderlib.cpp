@@ -1018,14 +1018,6 @@ namespace ShaderLib
 		return;
 	}
 
-#ifdef WIN64
-	struct CShaderAPIDx8
-	{
-		char pad[0x120];
-		IDirect3DDevice9* m_DeviceWrapper;
-	};
-#endif
-
 	int MenuInit(GarrysMod::Lua::ILuaBase* LUA)
 	{
 		static Color msgc(100, 255, 100, 255);
@@ -1080,8 +1072,15 @@ namespace ShaderLib
 				Setup_Hook(CShaderManager_SetVertexShader, GetVTable(g_pShaderManager)[9]);
 				Setup_Hook(CShaderManager_SetPixelShader, GetVTable(g_pShaderManager)[10]);
 
-				m_pD3DDevice = ((CShaderAPIDx8*)g_pShaderApi)->m_DeviceWrapper;
-				if (!m_pD3DDevice) { ShaderLibError("m_pD3DDevice == NULL"); }
+				// mov     edx, 5E740DE1h
+				// mov     cs:g_pD3D9Device, rbx
+				static const char sign[] = "BA E1 0D 74 5E 48 89 1D ?? ?? ?? ??";
+				auto ptr = ScanSign(shaderapidx, sign, sizeof(sign) - 1);
+				if (!ptr) { ShaderLibError("g_pD3D9Device sig == NULL\n"); }
+
+				auto offset = ((uint32_t*)ptr)[2];
+				m_pD3DDevice = *(IDirect3DDevice9**)((char*)ptr + offset + 12);
+				if (!m_pD3DDevice) { ShaderLibError("m_pD3DDevice == NULL\n"); }
 			}
 #endif
 
