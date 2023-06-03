@@ -1,1 +1,1 @@
-#define EGSM_VERSION 7
+#define EGSM_VERSION 8

@@ -9,7 +9,7 @@ A module that enhances gmod with a thing that was asked for decades
 * Extract [shaders.zip](https://github.com/devonium/EGSM/releases) to garrysmod/
 * APPEND `require((BRANCH == "x86-64" or BRANCH == "chromium" ) and "egsm_chromium" or "egsm")` to garrysmod/lua/menu/menu.lua
 
-https://youtu.be/SlWGKU-mYRw
+https://www.youtube.com/watch?v=hRg8DLqhnNY
 
 ### How to compile
 [garrysmod_common](https://github.com/danielga/garrysmod_common)
@@ -20,5 +20,5 @@ git clone --recursive https://github.com/danielga/garrysmod_common -b "x86-64-su
 
 ```
 premake5 vs2017 --gmcommon="garrysmod_common_path" --autoinstall="gmod_lua_bin_path"
-premake5 vs2017 --gmcommon="garrysmod_common_x86_64_path" --autoinstall="gmod_lua_bin_path --chromium=1"
+premake5 vs2017 --gmcommon="garrysmod_common_x86_64_path" --autoinstall="gmod_lua_bin_path" --chromium=1
 ```

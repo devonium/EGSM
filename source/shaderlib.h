@@ -14,6 +14,8 @@
 #include <ishadercompiledll.h>
 #include <tier1/utllinkedlist.h>
 #include "IShaderSystem.h"
+#include <materialsystem/imaterial.h>
+#include <materialsystem/itexture.h>
 #include <shaderlib/cshader.h>
 #include <defs.h>
 #include <utlhash.h>
@@ -24,10 +26,13 @@ namespace ShaderLib
 	int  MenuInit(GarrysMod::Lua::ILuaBase* LUA);
 	void MenuDeinit(GarrysMod::Lua::ILuaBase* LUA);
 	void LuaInit(GarrysMod::Lua::ILuaBase* LUA);
+	void LuaPostInit(GarrysMod::Lua::ILuaBase* LUA);
 	void LuaDeinit(GarrysMod::Lua::ILuaBase* LUA);
 
+#ifdef WIN64
 	static CUtlFixedLinkedList< CShaderManager::ShaderLookup_t > g_VertexShaderDict;
 	static CUtlFixedLinkedList< CShaderManager::ShaderLookup_t > g_PixelShaderDict;
+#endif
 
 	inline CUtlFixedLinkedList< CShaderManager::ShaderLookup_t >& GetVertexShaderDict()
 	{
@@ -399,25 +404,8 @@ namespace ShaderLib
 		int StencilReferenceValue = 0;
 		uint32 StencilTestMask = 0;
 		uint32 StencilWriteMask = 0;
-
-		void InvokeRecompileShadersHook()
-		{
-			GarrysMod::Lua::ILuaBase* LUA = g_pClientLua->luabase;
-			LUA->SetState(g_pClientLua);
-			int top = LUA->Top();
-
-			LUA->PushSpecial(GarrysMod::Lua::SPECIAL_GLOB);
-			LUA->GetField(-1, "hook");
-			LUA->GetField(-1, "Run");
-			LUA->PushString("RecompileShaders");
-			if (LUA->PCall(1, 0, 0))
-			{
-				Msg("%s\n", LUA->GetString(-1));
-				LUA->Pop();
-			}
-			top = LUA->Top();
-			LUA->Pop(2);
-		}
+		
+		ITexture* rts[4] = { 0, 0, 0, 0 };
 
 		void OnDrawElements(IMaterialVar** params, IShaderShadow* pShaderShadow, IShaderDynamicAPI* pShaderAPI, VertexCompressionType_t vertexCompression, CBasePerMaterialContextData** pContextDataPtr)
 		{
@@ -465,6 +453,7 @@ namespace ShaderLib
 				for (int i = 0; i <= ActiveSamplers; i++)
 				{
 					pShaderShadow->EnableTexture((Sampler_t)i, true);
+					pShaderShadow->EnableSRGBRead((Sampler_t)i, true);
 				}
 
 				//// Always enable...will bind white if nothing specified...
@@ -489,26 +478,9 @@ namespace ShaderLib
 				int userDataSize = 4;
 				pShaderShadow->VertexShaderVertexFormat(flags, nTexCoordCount, NULL, userDataSize);
 
-				CShaderManager::ShaderLookup_t lookup;
-				lookup.m_nStaticIndex = INT_MIN;
-				{
-					lookup.m_Name = g_pShaderManager->m_ShaderSymbolTable.AddString(VShader);
-					if (g_pShaderManager->m_VertexShaderDict.Find(lookup) == g_pShaderManager->m_VertexShaderDict.InvalidIndex())
-					{
-						InvokeRecompileShadersHook();
-					}
-				}
-				
-				{
-					lookup.m_Name = g_pShaderManager->m_ShaderSymbolTable.AddString(PShader);
-					if (g_pShaderManager->m_PixelShaderDict.Find(lookup) == g_pShaderManager->m_PixelShaderDict.InvalidIndex())
-					{
-						InvokeRecompileShadersHook();
-					}
-				}
-		
 				pShaderShadow->SetVertexShader(VShader, INT_MIN);
 				pShaderShadow->SetPixelShader(PShader, INT_MIN);
+
 				if (bHasFlashlight)
 				{
 					FogToBlack();
@@ -754,6 +726,14 @@ namespace ShaderLib
 
 			}
 			CMatRenderContextPtr pRenderContext(g_pMaterialSystem);
+			auto pMatRenderContext = g_pMaterialSystem->GetRenderContext();
+
+			bool isWaterPass = false;
+			auto rt = pMatRenderContext->GetRenderTarget();
+			if (rt)
+			{
+				isWaterPass = strcmp(rt->GetName(), "_rt_waterreflection") == 0;
+			}
 
 			if (!IsSnapshotting())
 			{
@@ -766,14 +746,30 @@ namespace ShaderLib
 				pRenderContext->SetStencilTestMask(StencilTestMask);
 				pRenderContext->SetStencilWriteMask(StencilWriteMask);
 				pRenderContext->CullMode(CullMode);
+
+				if (!isWaterPass)
+				{				
+					if (rts[0]) { pMatRenderContext->SetRenderTargetEx(0, rts[0]); }
+					if (rts[1]) { pMatRenderContext->SetRenderTargetEx(1, rts[1]); }
+					if (rts[2]) { pMatRenderContext->SetRenderTargetEx(2, rts[2]); }
+					if (rts[3]) { pMatRenderContext->SetRenderTargetEx(3, rts[3]); }			
+				}
 			}
 			b_isEgsmShader = true;
 			Draw();
 			b_isEgsmShader = false;
 			if (!IsSnapshotting())
 			{
+				if (!isWaterPass)
+				{
+					if (rts[0]) { pMatRenderContext->SetRenderTargetEx(0, NULL); }
+					if (rts[1]) { pMatRenderContext->SetRenderTargetEx(1, NULL); }
+					if (rts[2]) { pMatRenderContext->SetRenderTargetEx(2, NULL); }
+					if (rts[3]) { pMatRenderContext->SetRenderTargetEx(3, NULL); }
+				}
 				pRenderContext->CullMode(MATERIAL_CULLMODE_CCW);
 				pRenderContext->SetStencilEnable(false);
+				
 			}
 		}
 	};

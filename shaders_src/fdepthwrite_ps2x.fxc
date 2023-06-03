@@ -16,14 +16,23 @@ struct PS_INPUT
 
 #if COLOR_DEPTH
 	float4 vWorldPos_projPosZ	: TEXCOORD1;
+	float4 vNormal : TEXCOORD2;
 #endif
 
 };
 
+struct PS_OUTPUT
+{
+	float4 _ : COLOR0;
+	float4 WPD : COLOR1;
+	float4 N : COLOR2;
+};
+
 sampler BaseTextureSampler	: register( s0 );
 
-float4 main( PS_INPUT i ) : COLOR
+PS_OUTPUT main( PS_INPUT i )
 {
+	PS_OUTPUT o = (PS_OUTPUT)0;
 	float4 color = float4( 1, 0, 0, 1 );	// opaque alpha....the color doesn't matter for this shader
 
 #if ALPHACLIP
@@ -34,10 +43,12 @@ float4 main( PS_INPUT i ) : COLOR
 #endif
 
 #if ( COLOR_DEPTH == 1 )
-	return float4(1/i.vWorldPos_projPosZ.xyz, 1/i.vWorldPos_projPosZ.w);
+	o._ = 0;
+	o.WPD = float4(1/(i.vWorldPos_projPosZ.xyz), 1/i.vWorldPos_projPosZ.w);
+	o.N = i.vNormal;
 #else
 
-	return color;
-
 #endif
+
+	return o;
 }

@@ -34,16 +34,28 @@
 #include "Windows.h"
 #include "DepthWrite.h"
 #include "chromium_fix.h"
+#include "fviewrender.h"
+
+#include <istudiorender.h>
 
 using namespace GarrysMod::Lua;
 extern IShaderSystem* g_pSLShaderSystem;
 extern IMaterialSystemHardwareConfig* g_pHardwareConfig = NULL;
 extern const MaterialSystem_Config_t* g_pConfig = NULL;
+
+extern lua_State* g_pClientLua;
+
+
 #ifndef  CHROMIUM
 extern IMaterialSystem* g_pMaterialSystem = NULL;
+extern IStudioRender* g_pStudioRender = NULL;
 #endif
 
 extern DepthWrite::CShader* g_DepthWriteShader;
+extern ITexture* g_NormalsTex = NULL;
+extern ITexture* g_DepthTex = NULL;
+extern Vector skybox_origin = Vector();
+extern int iSkyBoxScale = 1;
 
 namespace ShaderLib
 {
@@ -77,7 +89,7 @@ namespace ShaderLib
 		auto currline = std::to_string(ar->currentline);
 		LUA->PushFormattedString("%s:%s: shader compilation has failed %s\n%s", ar->short_src, currline.c_str(), name, error);
 		currline.~basic_string();
-		
+
 		delete error;
 		LUA->Error();
 	}
@@ -257,7 +269,7 @@ namespace ShaderLib
 		{
 			lookup.m_ShaderStaticCombos.m_pHardwareShaders = shaders;
 			lookup.m_ShaderStaticCombos.m_nCount = combosCount;
-			GetPixelShaderDict().AddToTail(lookup);
+			GetPixelShaderDict()[GetPixelShaderDict().AddToTail(lookup)].m_nDataOffset = HashString(program);
 		}
 		else
 		{
@@ -355,7 +367,7 @@ namespace ShaderLib
 		{
 			lookup.m_ShaderStaticCombos.m_pHardwareShaders = shaders;
 			lookup.m_ShaderStaticCombos.m_nCount = combosCount;
-			GetVertexShaderDict().AddToTail(lookup);
+			GetVertexShaderDict()[GetVertexShaderDict().AddToTail(lookup)].m_nDataOffset = HashString(program);
 		}
 		else
 		{
@@ -627,18 +639,6 @@ namespace ShaderLib
 			}
 		}
 
-		//for (int i = NUM_SHADER_MATERIAL_VARS-1; --i >= 0; )
-		//{
-		//	param = u->Shader->s_pShaderParamOverrides[i];
-		//	if (strcmp(param->GetName(), name) == 0)
-		//	{
-		//		//if (param->m_Info.m_pDefaultValue) { delete param->m_Info.m_pDefaultValue; }
-		//		param->m_Info.m_pDefaultValue = strdup(defvalue);
-		//		LUA->PushNumber(param->operator int());
-		//		return 1;
-		//	}
-		//}
-
 		param = new ShaderLib::CShaderParam(u->Shader->s_ShaderParams, strdup(name), (ShaderParamType_t)type, defvalue, "", 0);
 		LUA->PushNumber(param->operator int());
 		return 1;
@@ -654,7 +654,7 @@ namespace ShaderLib
 		{
 			defvalue = strdup(defvalue);
 		}
-		
+
 		if (paramindex > NUM_SHADER_MATERIAL_VARS)
 		{
 			delete u->Shader->s_ShaderParams[paramindex]->m_Info.m_pDefaultValue;
@@ -666,13 +666,13 @@ namespace ShaderLib
 		if (!param)
 		{
 			u->Shader->s_pShaderParamOverrides[paramindex];
-			param = new ShaderLib::CShaderParam(u->Shader->s_pShaderParamOverrides, (ShaderMaterialVars_t)paramindex, (ShaderParamType_t)0, defvalue, 0,0);
+			param = new ShaderLib::CShaderParam(u->Shader->s_pShaderParamOverrides, (ShaderMaterialVars_t)paramindex, (ShaderParamType_t)0, defvalue, 0, 0);
 			return 0;
 		}
-		
+
 		delete param->m_Info.m_pDefaultValue;
 		param->m_Info.m_pDefaultValue = defvalue;
-	
+
 		return 0;
 	}
 
@@ -891,6 +891,63 @@ namespace ShaderLib
 		return 0;
 	}
 
+	LUA_LIB_FUNCTION(shader_methods, SetRenderTarget)
+	{
+		ShaderUData* u = GetUShader(LUA);
+		int ind = LUA->CheckNumber(2);
+		if (ind < 0 || ind > 3)
+		{
+			LUA->ThrowError("rt index out of valid range [0-3]");
+		}
+
+		const char* name = LUA->GetString(3);
+		auto tex = g_pMaterialSystem->FindTexture(name, TEXTURE_GROUP_RENDER_TARGET);
+
+		if (!tex || tex->IsError()) { LUA->ThrowError("provided texture doens't exist"); }
+		if (!tex->IsRenderTarget()) { LUA->ThrowError("provided texture is not a render target"); }
+
+		u->Shader->rts[ind] = tex;
+		return 0;
+	}
+
+	bool bDepthPass = false;
+
+#define MK_CV(name) ConVar* name = NULL; bool name##_OV = 0;
+#define RES_CV(name) name->SetValue(name##_OV);
+#define SET_CV(name) name##_OV = name->GetBool(); name->SetValue(false);
+	MK_CV(mat_drawwater)
+	MK_CV(r_drawtranslucentworld)
+
+
+	LUA_LIB_FUNCTION(shaderlib, BeginDepthPass)
+	{
+		auto pMatRenderContext = g_pMaterialSystem->GetRenderContext();
+		pMatRenderContext->PushRenderTargetAndViewport(g_NormalsTex);
+		pMatRenderContext->ClearBuffers(true, true);
+
+		pMatRenderContext->PushRenderTargetAndViewport(g_DepthTex);
+		pMatRenderContext->ClearBuffers(true, true);
+
+		g_pStudioRender->ForcedMaterialOverride(NULL, OVERRIDE_DEPTH_WRITE);
+
+		SET_CV(mat_drawwater);
+		SET_CV(r_drawtranslucentworld);
+
+		bDepthPass = true;
+		return 0;
+	}
+
+	LUA_LIB_FUNCTION(shaderlib, EndDepthPass)
+	{
+		g_pStudioRender->ForcedMaterialOverride(0);
+		
+		RES_CV(mat_drawwater);
+		RES_CV(r_drawtranslucentworld);
+
+		bDepthPass = false;
+		return 0;
+	}
+
 	Define_method_Hook(VertexShader_t, CShaderManager_CreateVertexShader, CShaderManager*, const char* pVertexShaderFile, int nStaticVshIndex, char* debugLabel)
 	{
 		if (!g_pShaderManager)
@@ -915,13 +972,6 @@ namespace ShaderLib
 	}
 
 #ifdef WIN64
-
-	Define_method_Hook(void, Dx9Device_EndScene, IDirect3DDevice9*, )
-	{
-		m_pD3DDevice = _this;
-		Dx9Device_EndScene_hook.Destroy();
-		return;
-	}
 
 	Define_method_Hook(VertexShader_t, CShaderManager_CreatePixelShader, CShaderManager*, const char* pVertexShaderFile, int nStaticVshIndex, char* debugLabel)
 	{
@@ -976,24 +1026,36 @@ namespace ShaderLib
 		if (!g_pShaderManager) { return; }
 		return;
 	}
+
+	Define_method_Hook(void, RT_ClearColor4ub, void*, unsigned char r, unsigned char g, unsigned char b, unsigned char a)
+	{
+		if (bDepthPass)
+		{
+			return;
+		}
+
+		RT_ClearColor4ub_trampoline()(_this, r, g, b, a);
+	}
 	
-	bool inDepthPass = false;
+
+
 	IMaterial* transpMat = NULL;
+	IMaterial* depthMat = NULL;
+
 	Define_method_Hook(void, CMatRenderContextBase_Bind, void*, IMaterial* mat, void* data)
 	{
-		if (inDepthPass && strcmp(mat->GetShaderName(), "DepthWrite") != 0)
-		{
+		if (bDepthPass && strcmp(mat->GetShaderName(), "DepthWrite") != 0)
+		{	
 			CMatRenderContextBase_Bind_trampoline()(_this, transpMat, NULL);
 			return;
 		}
 		CMatRenderContextBase_Bind_trampoline()(_this, mat, data);
-		return;
 	}
-	
+
 	Define_method_Hook(void, CShaderSystem_InitShaderParameters, CShaderSystem*, IShader* pShader, IMaterialVar** params, const char* pMaterialName)
 	{
 		//Msg("%s %i\n", pShader->GetName(), pShader->GetFlags());
-		if (pShader->GetFlags() == -256)
+		if (pShader->GetFlags() == ShaderLib::s_nFlags)
 		{
 			for (int i = 0; i < pShader->GetNumParams(); i++)
 			{
@@ -1006,25 +1068,45 @@ namespace ShaderLib
 		}
 		CShaderSystem_InitShaderParameters_trampoline()(_this, pShader, params, pMaterialName);
 		return;
-	}	
+	}
+
+	Define_method_Hook(IMaterial*, R_StudioSetupSkinAndLighting, void*, IMatRenderContext* pRenderContext, int index, IMaterial** ppMaterials, int materialFlags,
+		void /*IClientRenderable*/* pClientRenderable, void* pColorMeshes, void* lighting)
+	{
+		if (bDepthPass)
+		{
+			g_pStudioRender->ForcedMaterialOverride(NULL, OVERRIDE_DEPTH_WRITE);
+		
+		}
+		IMaterial* ret = R_StudioSetupSkinAndLighting_trampoline()(_this, pRenderContext, index, ppMaterials, materialFlags, pClientRenderable, pColorMeshes, lighting);
+		return ret;
+	}
 
 	Define_method_Hook(void, CBaseWorldView_SSAO_DepthPass, void*)
 	{
-		if (!transpMat)
-		{
-			g_pCVar->FindVar("cl_drawspawneffect")->SetValue(0);
-
-			auto pVMTKeyValues = new KeyValues("UnlitGeneric");
-			pVMTKeyValues->SetString("$basetexture", "color/white");
-			pVMTKeyValues->SetFloat("$alpha", 0);
-			transpMat = g_pMaterialSystem->CreateMaterial("egsm/transpmat", pVMTKeyValues);
-		}
-		inDepthPass = true;
-		CBaseWorldView_SSAO_DepthPass_trampoline()(_this);
-		inDepthPass = false;
 		return;
 	}
 
+	Define_method_Hook(void, CSkyboxView_Draw, CSkyboxView*)
+	{
+		if (bDepthPass)
+		{
+			skybox_origin = _this->m_pSky3dParams->origin;
+			if (_this->m_pSky3dParams->scale > 0)
+			{
+				iSkyBoxScale = _this->m_pSky3dParams->scale;
+			}
+			else
+			{
+				iSkyBoxScale = 1;
+			}
+		}
+
+		CSkyboxView_Draw_trampoline()(_this);
+
+		return;
+	}
+	
 	int MenuInit(GarrysMod::Lua::ILuaBase* LUA)
 	{
 		static Color msgc(100, 255, 100, 255);
@@ -1035,7 +1117,8 @@ namespace ShaderLib
 		if (!Sys_LoadInterface("materialsystem", "ShaderSystem002", NULL, (void**)&g_pSLShaderSystem)) { ShaderLibError("IShaderSystem == NULL"); }
 		if (!Sys_LoadInterface("materialsystem", "VMaterialSystemConfig002", NULL, (void**)&g_pConfig)) { ShaderLibError("VMaterialSystemConfig002 == NULL"); }
 		if (!Sys_LoadInterface("materialsystem", MATERIAL_SYSTEM_INTERFACE_VERSION, NULL, (void**)&g_pMaterialSystem)) { ShaderLibError("VMaterialSystem == NULL"); }
-		
+		if (!Sys_LoadInterface("studiorender", STUDIO_RENDER_INTERFACE_VERSION, NULL, (void**)&g_pStudioRender)) { ShaderLibError("IStudioRender == NULL"); }
+
 		g_pShaderShadow = (IShaderShadow*)(g_pMaterialSystem->QueryInterface(SHADERSHADOW_INTERFACE_VERSION));
 		g_pShaderApi = (IShaderAPI*)(g_pMaterialSystem->QueryInterface(SHADERAPI_INTERFACE_VERSION));
 		g_pShaderDevice = (IShaderDevice*)(g_pMaterialSystem->QueryInterface(SHADER_DEVICE_INTERFACE_VERSION));
@@ -1044,20 +1127,39 @@ namespace ShaderLib
 
 		if (!g_pShaderShadow) { ShaderLibError("IShaderShadow == NULL"); }
 		if (!g_pShaderDevice) { ShaderLibError("IShaderDevice == NULL"); }
-		if (!g_pShaderApi)	  { ShaderLibError("IShaderAPI == NULL"); }
+		if (!g_pShaderApi) { ShaderLibError("IShaderAPI == NULL"); }
 		if (!g_pCVar) { ShaderLibError("g_pCVar == NULL"); }
 
 		auto shaderapidx = GetModuleHandle("shaderapidx9.dll");
 		if (!shaderapidx) { ShaderLibError("shaderapidx9.dll == NULL\n"); }
 
+		auto materialsystemdll = GetModuleHandle("materialsystem.dll");
+		if (!materialsystemdll) { ShaderLibError("materialsystem.dll == NULL\n"); }
+
+		auto studiorenderdll = GetModuleHandle("studiorender.dll");
+		if (!studiorenderdll) { ShaderLibError("studiorender.dll == NULL\n"); }
+
 		auto d3dx9_40 = GetModuleHandle("D3DX9_40.dll");
-		if (!d3dx9_40) 
+		if (!d3dx9_40)
 		{
 			d3dx9_40 = GetModuleHandle("D3DX9_42.dll");
 			if (!d3dx9_40)
 			{
 				ShaderLibError("D3DX9_40.dll == NULL\nD3DX9_42.dll == NULL\n");
 			}
+		}
+
+		{
+			static const char sign[] =
+				HOOK_SIGN_CHROMIUM_x32("55 8B EC 83 EC 1C 53 8B 5D 0C C6 45 FE 00 56 8B F1 89 75 F8 57 8B 46 04 8A 88 50 02 00 00 8B B8 4C 02 00 00 88 4D FF 83 FB 1F 77 17 8B 94 98 54 02 00 00 85 D2 74 0C 8A 8C 18 D4 02 00 00 8B FA 88 4D FF 80 78 24 00 7D 23 85 FF 75 1F F6 40 25 04 8A 7D FE 74 0B")
+				HOOK_SIGN_CHROMIUM_x64("48 89 5C 24 20 48 89 54 24 10 48 89 4C 24 08 55 56 57 41 54 41 55 41 56 41 57 48 83 EC 50 48 8B 41 08 45 32 F6 49 63 F0 4D 8B E1 48 8B EA 4C 8B F9 48 8B B8 50 02 00 00 44 0F B6 A8 58 02 00 00 83 FE 1F 77 19 4C 8B 84 F0 60 02 00 00 4D 85 C0 74 0C 44 0F B6 AC ")
+				HOOK_SIGN_x32("55 8B EC 83 EC 1C 53 8B 5D 0C C6 45 FE 00 56 8B F1 89 75 F8 57 8B 46 04 8A 88 50 02 00 00 8B B8 4C 02 00 00 88 4D FF 83 FB 1F 77 17 8B 94 98 54 02 00 00 85 D2 74 0C 8A 8C 18 D4 02 00 00 8B FA 88 4D FF 80 78 24 00 7D 23 85 FF 75 1F F6 40 25 04 8A 7D FE 74 0B 8B BE C0 07 00 00 E9 ? ? ? ? 8B BE BC 07")
+
+				R_StudioSetupSkinAndLighting_decl R_StudioSetupSkinAndLighting = (R_StudioSetupSkinAndLighting_decl)ScanSign(studiorenderdll, sign, sizeof(sign) - 1);
+
+			if (!R_StudioSetupSkinAndLighting) { ShaderLibError("R_StudioSetupSkinAndLighting == NULL\n"); return 0; }
+
+			Setup_Hook(R_StudioSetupSkinAndLighting, R_StudioSetupSkinAndLighting)
 		}
 
 		{
@@ -1079,20 +1181,13 @@ namespace ShaderLib
 				Setup_Hook(CShaderManager_SetVertexShader, GetVTable(g_pShaderManager)[9]);
 				Setup_Hook(CShaderManager_SetPixelShader, GetVTable(g_pShaderManager)[10]);
 
-				auto d3d9 = GetModuleHandle("d3d9.dll");
-				if (!d3d9)
-				{
-					ShaderLibError("d3d9.dll == NULL\n");
-				}
+				static const char sign[] = "BA E1 0D 74 5E 48 89 1D ?? ?? ?? ??";
+				auto ptr = ScanSign(shaderapidx, sign, sizeof(sign) - 1);
+				if (!ptr) { ShaderLibError("g_pD3D9Device sig == NULL\n"); }
 
-				const char sign[] =
-					HOOK_SIGN_x64("40 53 48 83 EC 40 48 C7 44 24 28 FE FF FF FF 48 8B D9 48 8B C1 4C 8D 41 08 48 F7 D8 48 1B D2 49 23 D0 45 33 C0 48 8D 4C 24 30 E8 ? ? ? ? 90 8B 43 4C 83 E0 02 84 C0 0F 85 ? ? ? ? 8B 83 DC 40 00 00 A8 01 0F 84 ? ? ? ? F6 83 D8 40 00 00 04 0F 85 ? ? ? ? 83 E0 FE 89 83 DC 40 00 00 48 8B 8B E8 40 00 00 83 A1 28 01 00 00 00 48 8B 01 33")
-
-					void* ptr = ScanSign(d3d9, sign, sizeof(sign) - 1);
-				if (!ptr) { ShaderLibError("Dx9Device::EndScene == NULL\n"); return 0; }
-
-				Setup_Hook(Dx9Device_EndScene, ptr);
-				g_pShaderDevice->Present();
+				auto offset = ((uint32_t*)ptr)[2];
+				m_pD3DDevice = *(IDirect3DDevice9**)((char*)ptr + offset + 12);
+				if (!m_pD3DDevice) { ShaderLibError("m_pD3DDevice == NULL\n"); }
 			}
 #endif
 
@@ -1108,31 +1203,51 @@ namespace ShaderLib
 
 		{
 			static const char sign[] =
-			HOOK_SIGN_x32("55 8B EC 83 EC 08 53 8B D9 8B ? ? ? ? ? 8B 01 8B 40 2C FF D0 84 C0 0F 84 ? ? ? ? 8B ? ? ? ? ? 8B 81 0C 10 00 00 89 45 F8 85 C0 74 16 6A 04 6A 00 68 ? ? ? ? 6A 00 68 ? ? ? ? FF 15 ? ? ? ? 8B")
-			HOOK_SIGN_x64("40 56 48 83 EC 30 48 8B F1 48 8B ? ? ? ? ? 48 8B 01 FF 50 58 84 C0 0F 84 ? ? ? ? 48 8B ? ? ? ? ? 48 89 5C 24 40 48 89 6C 24 48 48 89 7C 24 50 8B A9 0C 10 00 00 4C 89 74 24 58 85 ED 74 24 C7")
+				HOOK_SIGN_x32("55 8B EC 83 EC 08 53 8B D9 8B ? ? ? ? ? 8B 01 8B 40 2C FF D0 84 C0 0F 84 ? ? ? ? 8B ? ? ? ? ? 8B 81 0C 10 00 00 89 45 F8 85 C0 74 16 6A 04 6A 00 68 ? ? ? ? 6A 00 68 ? ? ? ? FF 15 ? ? ? ? 8B")
+				HOOK_SIGN_x64("40 56 48 83 EC 30 48 8B F1 48 8B ? ? ? ? ? 48 8B 01 FF 50 58 84 C0 0F 84 ? ? ? ? 48 8B ? ? ? ? ? 48 89 5C 24 40 48 89 6C 24 48 48 89 7C 24 50 8B A9 0C 10 00 00 4C 89 74 24 58 85 ED 74 24 C7")
 
-			void* DepthPass = ScanSign(clientdll, sign, sizeof(sign) - 1);
+				void* DepthPass = ScanSign(clientdll, sign, sizeof(sign) - 1);
 			if (!DepthPass) { ShaderLibError("CBaseWorldView::SSAO_DepthPass == NULL\n"); return 0; }
 			Setup_Hook(CBaseWorldView_SSAO_DepthPass, DepthPass)
-		}	
-		
-		auto materialsystemdll = GetModuleHandle("materialsystem.dll");
-		if (!materialsystemdll) { ShaderLibError("materialsystem.dll == NULL\n"); }
+		}
 
 		{
 			static const char sign[] =
-			HOOK_SIGN_CHROMIUM_x32("55 8B EC 56 57 8B F9 8B 4D 08 85 C9 75 14 68 ? ? ? ? FF 15 ? ? ? ? 8B ? ? ? ? ? 83 C4 04 8B 01 FF 90 78 01 00 00 8B 17 8B CF 8B F0 FF 92 2C 03 00 00 3B C6 74 2F 8B 06 8B CE 8B 80 E0 00 00 00 FF D0 84 C0 75 14 8B 06 8B CE FF 90 5C 01 00 00")
-			HOOK_SIGN_x32("55 8B EC 56 57 8B F9 8B 4D 08 85 C9 75 22 39 ? ? ? ? ? 0F 84 ? ? ? ? 68 ? ? ? ? FF 15 ? ? ? ? 8B ? ? ? ? ? 83 C4 04 EB 0D 8B 01 FF 75 0C FF 90 D4 00 00 00 8B F0 8B 06 8B CE 53 FF 90 78 01 00 00 8B D8 8B CB 8B 13 FF 92 E8 00 00 00 85 C0 0F 8F ? ? ? ? 8B")
-			HOOK_SIGN_x64("48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 20 49 8B F0 48 8B F9 48 85 D2 75 14 48 8D ? ? ? ? ? FF 15 ? ? ? ? 48 8B ? ? ? ? ? 48 8B 02 48 8B CA FF 90 F0 02 00 00 48 8B 17 48 8B CF 48 8B D8 FF 92 58 06 00 00 48 3B C3 74 37 48 8B 13 48 8B CB FF 92 C0 01 00")
+				HOOK_SIGN_M("56 57 8B F9 8B ? ? ? ? ? 8B B1 0C 10 00 00 85 F6 74 16 6A 04 6A 00 68 ? ? ? ? 6A 00 68 ? ? ? ? FF 15 ? ? ? ? 6A 00 6A 01 6A 01 8B CF E8")
+				HOOK_SIGN_CHROMIUM_x32("56 57 8B F9 8B ? ? ? ? ? 8B B1 0C 10 00 00 85 F6 74 16 6A 04 6A 00 68 ? ? ? ? 6A 00 68 ? ? ? ? FF 15 ? ? ? ? 6A 00 6A 01 6A 01")
+				HOOK_SIGN_CHROMIUM_x64("48 89 5C 24 08 57 48 83 EC 30 48 8B F9 48 8B ? ? ? ? ? 8B 99 0C 10 00 00 85 DB 74 24 C7 44 24 28 04 00 00 00 4C 8D ? ? ? ? ? 45 33 C0 C6 44 24 20 00 48 8D ? ? ? ? ? FF 15 ? ? ? ? 45 33 C9 41 B0 01 48 8B CF 41 8D 51 01 E8 ? ? ? ? 85 DB 74 0D")
 
-			void* Bind = ScanSign(materialsystemdll, sign, sizeof(sign) - 1);
+
+				void* CSkyboxView_Draw = ScanSign(clientdll, sign, sizeof(sign) - 1);
+			if (!CSkyboxView_Draw) { ShaderLibError("CSkyboxView_Draw == NULL\n"); return 0; }
+			Setup_Hook(CSkyboxView_Draw, CSkyboxView_Draw)
+		}
+
+		{
+			static const char sign[] =
+				HOOK_SIGN_x32("55 8B EC 8B ? ? ? ? ? 8B 01 5D FF A0 98 01 00 00")
+				HOOK_SIGN_x64("55 8B EC 8B ? ? ? ? ? 8B 01 5D FF A0 98 01 00 00");
+
+			//RT_ClearColor4ub_decl RT_ClearColor4ub = (RT_ClearColor4ub_decl)ScanSign(materialsystemdll, sign, sizeof(sign) - 1);
+			//if (!RT_ClearColor4ub) { ShaderLibError("RT_ClearColor4ub == NULL\n"); return 0; }
+			//
+			//Setup_Hook(RT_ClearColor4ub, RT_ClearColor4ub)
+		}
+
+		{
+			static const char sign[] =
+				HOOK_SIGN_CHROMIUM_x32("55 8B EC 56 57 8B F9 8B 4D 08 85 C9 75 14 68 ? ? ? ? FF 15 ? ? ? ? 8B ? ? ? ? ? 83 C4 04 8B 01 FF 90 78 01 00 00 8B 17 8B CF 8B F0 FF 92 2C 03 00 00 3B C6 74 2F 8B 06 8B CE 8B 80 E0 00 00 00 FF D0 84 C0 75 14 8B 06 8B CE FF 90 5C 01 00 00")
+				HOOK_SIGN_x32("55 8B EC 56 57 8B F9 8B 4D 08 85 C9 75 22 39 ? ? ? ? ? 0F 84 ? ? ? ? 68 ? ? ? ? FF 15 ? ? ? ? 8B ? ? ? ? ? 83 C4 04 EB 0D 8B 01 FF 75 0C FF 90 D4 00 00 00 8B F0 8B 06 8B CE 53 FF 90 78 01 00 00 8B D8 8B CB 8B 13 FF 92 E8 00 00 00 85 C0 0F 8F ? ? ? ? 8B")
+				HOOK_SIGN_x64("48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 20 49 8B F0 48 8B F9 48 85 D2 75 14 48 8D ? ? ? ? ? FF 15 ? ? ? ? 48 8B ? ? ? ? ? 48 8B 02 48 8B CA FF 90 F0 02 00 00 48 8B 17 48 8B CF 48 8B D8 FF 92 58 06 00 00 48 3B C3 74 37 48 8B 13 48 8B CB FF 92 C0 01 00")
+					
+				void* Bind = ScanSign(materialsystemdll, sign, sizeof(sign) - 1);
 			if (!Bind) { ShaderLibError("CMatRenderContextBase::Bind == NULL\n"); return 0; }
 			Setup_Hook(CMatRenderContextBase_Bind, Bind)
 		}
 
 		Setup_Hook(CShaderManager_PurgeUnusedVertexAndPixelShaders, GetVTable(g_pShaderManager)[15])
 		Setup_Hook(CShaderSystem_InitShaderParameters, GetVTable(g_pCShaderSystem)[14])
-		
+
 		g_pShaderLibDLLIndex = g_pCShaderSystem->m_ShaderDLLs.AddToTail();
 		g_pShaderLibDLL = &g_pCShaderSystem->m_ShaderDLLs[g_pShaderLibDLLIndex];
 		g_pShaderLibDLL->m_pFileName = strdup("egsm_shaders.dll");
@@ -1152,22 +1267,49 @@ namespace ShaderLib
 			}
 		}
 
+		{
+			auto pVMTKeyValues = new KeyValues("UnlitGeneric");
+			pVMTKeyValues->SetString("$basetexture", "color/white");
+			pVMTKeyValues->SetFloat("$alpha", 0);
+			transpMat = g_pMaterialSystem->CreateMaterial("egsm/transpmat", pVMTKeyValues);
+			transpMat->IncrementReferenceCount();
+		}
+		{
+			auto pVMTKeyValues = new KeyValues("DepthWrite");
+			pVMTKeyValues->SetString("$basetexture", "color/white");
+			pVMTKeyValues->SetInt("$no_fullbright", 1);
+			pVMTKeyValues->SetInt("$$color_depth", 1);
+			pVMTKeyValues->SetInt("$alpha_test", 0);
+			depthMat = g_pMaterialSystem->CreateMaterial("egsm/depthpmat", pVMTKeyValues);
+			depthMat->IncrementReferenceCount();
+		}
+		mat_drawwater		  = g_pCVar->FindVar("mat_drawwater");
+		r_drawtranslucentworld = g_pCVar->FindVar("r_drawtranslucentworld");
+
 		ConColorMsg(msgc, "-Succ\n");
+	}
+
+	void LuaPostInit(GarrysMod::Lua::ILuaBase* LUA)
+	{
+		
 	}
 
 	void LuaInit(GarrysMod::Lua::ILuaBase* LUA)
 	{
-		int iW, iH;
-		g_pMaterialSystem->GetBackBufferDimensions(iW, iH);
-
-
 		g_pMaterialSystem->BeginRenderTargetAllocation();
-		g_pMaterialSystem->CreateNamedRenderTargetTextureEx2("_rt_ResolvedFullFrameDepth", 1, 1,
+		g_DepthTex = g_pMaterialSystem->CreateNamedRenderTargetTextureEx2("_rt_ResolvedFullFrameDepth", 1, 1,
 			RT_SIZE_FULL_FRAME_BUFFER, IMAGE_FORMAT_RGBA32323232F, MATERIAL_RT_DEPTH_SEPARATE,
 			TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT | TEXTUREFLAGS_POINTSAMPLE,
-			CREATERENDERTARGETFLAGS_NOEDRAM);
-	
+			CREATERENDERTARGETFLAGS_NOEDRAM);	
+		g_DepthTex->IncrementReferenceCount();
+
+		g_NormalsTex = g_pMaterialSystem->CreateNamedRenderTargetTextureEx2("_rt_Normals", 1, 1,
+			RT_SIZE_FULL_FRAME_BUFFER, IMAGE_FORMAT_RGBA32323232F, MATERIAL_RT_DEPTH_SEPARATE,
+			TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT | TEXTUREFLAGS_POINTSAMPLE,
+			CREATERENDERTARGETFLAGS_NOEDRAM);	
+		g_NormalsTex->IncrementReferenceCount();
 		g_pMaterialSystem->EndRenderTargetAllocation();
+
 
 		LUA->PushSpecial(SPECIAL_GLOB);
 		LUA->CreateTable();
@@ -1342,6 +1484,11 @@ namespace ShaderLib
 
 	void LuaDeinit(GarrysMod::Lua::ILuaBase* LUA)
 	{
+		if (bDepthPass)
+		{
+			RES_CV(mat_drawwater);
+			RES_CV(r_drawtranslucentworld);
+		}
 		if (!g_pShaderLibDLL) { return; }
 		for (int index = g_pShaderLibDLL->m_ShaderDict.Count(); --index >= 0; )
 		{
@@ -1397,7 +1544,6 @@ namespace ShaderLib
 				}
 			}
 		}
-		
 	}
 
 }

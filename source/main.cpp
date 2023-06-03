@@ -30,6 +30,7 @@ void ExposeVersion(ILuaBase* LUA)
 
 typedef int			(*luaL__loadbufferex)(lua_State* L, const char* buff, size_t sz, const char* name, const char* mode);
 #include "version_check.lua.inc"
+#include "depthpass.lua.inc"
 
 void Menu_Init(ILuaBase* LUA)
 {
@@ -58,6 +59,38 @@ void CL_Init(ILuaBase* LUA)
 {
 	ExposeVersion(LUA);
 	ShaderLib::LuaInit(LUA);
+
+	auto lua_shared = GetModuleHandle("lua_shared.dll");
+	if (!lua_shared) { ShaderLibError("lua_shared.dll == NULL\n"); }
+		
+	luaL__loadbufferex luaL__loadbufferfex = (luaL__loadbufferex)GetProcAddress(lua_shared, "luaL_loadbufferx");
+	if (luaL__loadbufferfex(LUA->GetState(), depthpass_lua, sizeof(depthpass_lua) - 1, "", NULL))
+	{
+		Msg("%s\n", LUA->GetString());
+		LUA->Pop();
+		return;
+	}
+	if (LUA->PCall(0, 0, 0))
+	{
+		Msg("%s\n", LUA->GetString());
+		LUA->Pop();
+	}
+
+	//Bass::LuaInit(LUA);
+}
+
+void CL_PostInit(ILuaBase* LUA)
+{
+	ShaderLib::LuaPostInit(LUA);
+
+	LUA->PushSpecial(SPECIAL_GLOB);
+	LUA->GetField(-1, "shaderlib");
+	LUA->GetField(-1, "__INIT");
+	if (LUA->PCall(0, 0, 0))
+	{
+		LUA->Pop();
+	}
+	LUA->Pop(2);
 	//Bass::LuaInit(LUA);
 }
 
@@ -84,6 +117,11 @@ int32_t lua_initcl_detour()
 	int32_t ret = lua_initcl_hk.GetTrampoline<lua_initcl>()();
 	luaL_newstate_hk.Disable();
 	lua_loadbufferex_hk.Disable();
+
+	GarrysMod::Lua::ILuaBase* LUA = g_pClientLua->luabase;
+	LUA->SetState(g_pClientLua);
+	CL_PostInit(LUA);
+
 	return ret;
 }
 
@@ -101,10 +139,11 @@ int luaL_loadbufferex_detour(lua_State* L, const char* buff, size_t sz, const ch
 	{
 		GarrysMod::Lua::ILuaBase* LUA = L->luabase;
 		LUA->SetState(L);
+		lua_loadbufferex_hk.Disable();
 		CL_Init(LUA);
 	}
 	int ret = lua_loadbufferex_hk.GetTrampoline<luaL__loadbufferex>()(L, buff, sz, name, mode);
-	lua_loadbufferex_hk.Disable();
+
 	return ret;
 }
 
@@ -181,7 +220,7 @@ GMOD_MODULE_CLOSE( )
 	return 0;
 }
 
-BOOL WINAPI DllMain( HINSTANCE hinstDLL,  DWORD fdwReason, LPVOID lpvReserved) 
+BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
 {
 	switch (fdwReason)
 	{
