@@ -916,10 +916,10 @@ namespace ShaderLib
 #define RES_CV(name) name->SetValue(name##_OV);
 #define SET_CV(name) name##_OV = name->GetBool(); name->SetValue(false);
 	MK_CV(mat_drawwater)
-	MK_CV(r_drawtranslucentworld)
+		MK_CV(r_drawtranslucentworld)
 
 
-	LUA_LIB_FUNCTION(shaderlib, BeginDepthPass)
+		LUA_LIB_FUNCTION(shaderlib, BeginDepthPass)
 	{
 		auto pMatRenderContext = g_pMaterialSystem->GetRenderContext();
 		pMatRenderContext->PushRenderTargetAndViewport(g_NormalsTex);
@@ -928,7 +928,7 @@ namespace ShaderLib
 		pMatRenderContext->PushRenderTargetAndViewport(g_DepthTex);
 		pMatRenderContext->ClearBuffers(true, true);
 
-		g_pStudioRender->ForcedMaterialOverride(NULL, OVERRIDE_DEPTH_WRITE);
+		g_pStudioRender->ForcedMaterialOverride(NULL, OVERRIDE_SSAO_DEPTH_WRITE);
 
 		SET_CV(mat_drawwater);
 		SET_CV(r_drawtranslucentworld);
@@ -940,7 +940,7 @@ namespace ShaderLib
 	LUA_LIB_FUNCTION(shaderlib, EndDepthPass)
 	{
 		g_pStudioRender->ForcedMaterialOverride(0);
-		
+
 		RES_CV(mat_drawwater);
 		RES_CV(r_drawtranslucentworld);
 
@@ -1036,7 +1036,7 @@ namespace ShaderLib
 
 		RT_ClearColor4ub_trampoline()(_this, r, g, b, a);
 	}
-	
+
 
 
 	IMaterial* transpMat = NULL;
@@ -1045,7 +1045,7 @@ namespace ShaderLib
 	Define_method_Hook(void, CMatRenderContextBase_Bind, void*, IMaterial* mat, void* data)
 	{
 		if (bDepthPass && strcmp(mat->GetShaderName(), "DepthWrite") != 0)
-		{	
+		{
 			CMatRenderContextBase_Bind_trampoline()(_this, transpMat, NULL);
 			return;
 		}
@@ -1075,8 +1075,8 @@ namespace ShaderLib
 	{
 		if (bDepthPass)
 		{
-			g_pStudioRender->ForcedMaterialOverride(NULL, OVERRIDE_DEPTH_WRITE);
-		
+			g_pStudioRender->ForcedMaterialOverride(NULL, OVERRIDE_SSAO_DEPTH_WRITE);
+
 		}
 		IMaterial* ret = R_StudioSetupSkinAndLighting_trampoline()(_this, pRenderContext, index, ppMaterials, materialFlags, pClientRenderable, pColorMeshes, lighting);
 		return ret;
@@ -1106,7 +1106,20 @@ namespace ShaderLib
 
 		return;
 	}
-	
+
+	class FUCKOOPConVar : public ConVar
+	{
+	public:
+		void SETFUCKINGMAX()
+		{
+			this->m_bHasMax = true;
+			this->m_fMaxVal = 0;			
+			
+			this->m_bHasMin = true;
+			this->m_fMinVal = 0;
+		}
+	};
+
 	int MenuInit(GarrysMod::Lua::ILuaBase* LUA)
 	{
 		static Color msgc(100, 255, 100, 255);
@@ -1239,14 +1252,14 @@ namespace ShaderLib
 				HOOK_SIGN_CHROMIUM_x32("55 8B EC 56 57 8B F9 8B 4D 08 85 C9 75 14 68 ? ? ? ? FF 15 ? ? ? ? 8B ? ? ? ? ? 83 C4 04 8B 01 FF 90 78 01 00 00 8B 17 8B CF 8B F0 FF 92 2C 03 00 00 3B C6 74 2F 8B 06 8B CE 8B 80 E0 00 00 00 FF D0 84 C0 75 14 8B 06 8B CE FF 90 5C 01 00 00")
 				HOOK_SIGN_x32("55 8B EC 56 57 8B F9 8B 4D 08 85 C9 75 22 39 ? ? ? ? ? 0F 84 ? ? ? ? 68 ? ? ? ? FF 15 ? ? ? ? 8B ? ? ? ? ? 83 C4 04 EB 0D 8B 01 FF 75 0C FF 90 D4 00 00 00 8B F0 8B 06 8B CE 53 FF 90 78 01 00 00 8B D8 8B CB 8B 13 FF 92 E8 00 00 00 85 C0 0F 8F ? ? ? ? 8B")
 				HOOK_SIGN_x64("48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 20 49 8B F0 48 8B F9 48 85 D2 75 14 48 8D ? ? ? ? ? FF 15 ? ? ? ? 48 8B ? ? ? ? ? 48 8B 02 48 8B CA FF 90 F0 02 00 00 48 8B 17 48 8B CF 48 8B D8 FF 92 58 06 00 00 48 3B C3 74 37 48 8B 13 48 8B CB FF 92 C0 01 00")
-					
+
 				void* Bind = ScanSign(materialsystemdll, sign, sizeof(sign) - 1);
 			if (!Bind) { ShaderLibError("CMatRenderContextBase::Bind == NULL\n"); return 0; }
 			Setup_Hook(CMatRenderContextBase_Bind, Bind)
 		}
 
 		Setup_Hook(CShaderManager_PurgeUnusedVertexAndPixelShaders, GetVTable(g_pShaderManager)[15])
-		Setup_Hook(CShaderSystem_InitShaderParameters, GetVTable(g_pCShaderSystem)[14])
+			Setup_Hook(CShaderSystem_InitShaderParameters, GetVTable(g_pCShaderSystem)[14])
 
 		g_pShaderLibDLLIndex = g_pCShaderSystem->m_ShaderDLLs.AddToTail();
 		g_pShaderLibDLL = &g_pCShaderSystem->m_ShaderDLLs[g_pShaderLibDLLIndex];
@@ -1283,15 +1296,18 @@ namespace ShaderLib
 			depthMat = g_pMaterialSystem->CreateMaterial("egsm/depthpmat", pVMTKeyValues);
 			depthMat->IncrementReferenceCount();
 		}
-		mat_drawwater		  = g_pCVar->FindVar("mat_drawwater");
+		mat_drawwater = g_pCVar->FindVar("mat_drawwater");
 		r_drawtranslucentworld = g_pCVar->FindVar("r_drawtranslucentworld");
+		auto mat_antialias = g_pCVar->FindVar("mat_antialias");
+		mat_antialias->SetValue(0);
+		((FUCKOOPConVar*)(mat_antialias))->SETFUCKINGMAX();
 
 		ConColorMsg(msgc, "-Succ\n");
 	}
 
 	void LuaPostInit(GarrysMod::Lua::ILuaBase* LUA)
 	{
-		
+
 	}
 
 	void LuaInit(GarrysMod::Lua::ILuaBase* LUA)
@@ -1300,13 +1316,13 @@ namespace ShaderLib
 		g_DepthTex = g_pMaterialSystem->CreateNamedRenderTargetTextureEx2("_rt_ResolvedFullFrameDepth", 1, 1,
 			RT_SIZE_FULL_FRAME_BUFFER, IMAGE_FORMAT_RGBA32323232F, MATERIAL_RT_DEPTH_SEPARATE,
 			TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT | TEXTUREFLAGS_POINTSAMPLE,
-			CREATERENDERTARGETFLAGS_NOEDRAM);	
+			CREATERENDERTARGETFLAGS_NOEDRAM);
 		g_DepthTex->IncrementReferenceCount();
 
 		g_NormalsTex = g_pMaterialSystem->CreateNamedRenderTargetTextureEx2("_rt_Normals", 1, 1,
 			RT_SIZE_FULL_FRAME_BUFFER, IMAGE_FORMAT_RGBA32323232F, MATERIAL_RT_DEPTH_SEPARATE,
 			TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT | TEXTUREFLAGS_POINTSAMPLE,
-			CREATERENDERTARGETFLAGS_NOEDRAM);	
+			CREATERENDERTARGETFLAGS_NOEDRAM);
 		g_NormalsTex->IncrementReferenceCount();
 		g_pMaterialSystem->EndRenderTargetAllocation();
 
@@ -1479,7 +1495,7 @@ namespace ShaderLib
 	void MenuDeinit(GarrysMod::Lua::ILuaBase* LUA)
 	{
 		if (!g_pShaderLibDLL) { return; }
-		g_pCShaderSystem->m_ShaderDLLs.Remove(g_pShaderLibDLLIndex);
+		g_pCShaderSystem->m_ShaderDLLs.RemoveAll();
 	}
 
 	void LuaDeinit(GarrysMod::Lua::ILuaBase* LUA)

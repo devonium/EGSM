@@ -23,6 +23,7 @@
 namespace ShaderLib
 {
 	static CShaderManager* g_pShaderManager = NULL;
+	extern IShaderAPI* g_pShaderApi;
 	int  MenuInit(GarrysMod::Lua::ILuaBase* LUA);
 	void MenuDeinit(GarrysMod::Lua::ILuaBase* LUA);
 	void LuaInit(GarrysMod::Lua::ILuaBase* LUA);

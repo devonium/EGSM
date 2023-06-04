@@ -52,7 +52,7 @@ SHADER_INIT
 SHADER_DRAW
 {
 	bool bAlphaClip = IS_FLAG_SET(MATERIAL_VAR_ALPHATEST);
-	const int nColorDepth = 1;
+	const int nColorDepth = GetIntParam(COLOR_DEPTH, params, 0);
 	SHADOW_STATE
 	{
 		// Set stream format (note that this shader supports compression)
@@ -226,7 +226,7 @@ SHADER_DRAW
 		{
 			if (b && strcmp(b->GetName(), "fuckofffog") !=0)
 			{
-				
+
 			}
 			else
 			{
