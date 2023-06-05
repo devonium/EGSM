@@ -505,7 +505,7 @@ namespace ShaderLib
 					pShaderAPI->BindStandardTexture(SHADER_SAMPLER0, TEXTURE_WHITE);
 				}
 
-				LightState_t lightState = { 0, false, false };
+				lightState = { 0, false, false };
 				bool bFlashlightShadows = false;
 				if (bHasFlashlight)
 				{
