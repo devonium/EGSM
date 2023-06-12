@@ -154,6 +154,7 @@ void luaL_closestate_detour(lua_State* L)
 		GarrysMod::Lua::ILuaBase* LUA = g_pClientLua->luabase;
 		LUA->SetState(g_pClientLua);
 		CL_Deinit(LUA);
+		g_pClientLua = NULL;
 	}
 	luaL_closestate_hk.GetTrampoline<luaL_closestate>()(L);
 }

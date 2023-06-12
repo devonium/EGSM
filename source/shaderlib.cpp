@@ -545,10 +545,12 @@ namespace ShaderLib
 		constant->IsValid = 2;
 		constant->IsStandard = false;
 	setup:
+		constant->RowsCount = rowsCount;
 		constant->Type = ShaderConstantF::Param;
 		constant->Index = index;
 		if (constant->Param != paramindex) { constant->IsValid = 2; }
 		constant->Param = paramindex;
+		
 	}
 
 	void AttemptToSetError(ILuaBase* LUA)
@@ -827,6 +829,13 @@ namespace ShaderLib
 		u->Shader->SupportsFlashlight = LUA->GetBool(2);
 		return 0;
 	}
+	
+	LUA_LIB_FUNCTION(shader_methods, EnableColorWrites)
+	{
+		ShaderUData* u = GetUShader(LUA);
+		u->Shader->bColorWrites = LUA->GetBool(2);
+		return 0;
+	}
 
 	LUA_LIB_FUNCTION(shader_methods, EnableStencil)
 	{
@@ -889,9 +898,16 @@ namespace ShaderLib
 		ShaderUData* u = GetUShader(LUA);
 		u->Shader->StencilWriteMask = LUA->CheckNumber(2);
 		return 0;
+	}	
+	
+	LUA_LIB_FUNCTION(shader_methods, SetTexCoordCount)
+	{
+		ShaderUData* u = GetUShader(LUA);
+		u->Shader->nTexCoordCount = LUA->CheckNumber(2);
+		return 0;
 	}
 
-	LUA_LIB_FUNCTION(shader_methods, SetRenderTarget)
+	void ShaderLib_SetRT(ILuaBase* LUA, bool refl = false)
 	{
 		ShaderUData* u = GetUShader(LUA);
 		int ind = LUA->CheckNumber(2);
@@ -900,13 +916,38 @@ namespace ShaderLib
 			LUA->ThrowError("rt index out of valid range [0-3]");
 		}
 
+		ITexture** rts = refl ? u->Shader->rts_refl : u->Shader->rts;
+
 		const char* name = LUA->GetString(3);
+		if (!name)
+		{
+			if (rts[ind])
+			{
+				rts[ind]->DecrementReferenceCount();
+				rts[ind] = NULL;
+			}
+			return;
+		}
 		auto tex = g_pMaterialSystem->FindTexture(name, TEXTURE_GROUP_RENDER_TARGET);
 
 		if (!tex || tex->IsError()) { LUA->ThrowError("provided texture doens't exist"); }
 		if (!tex->IsRenderTarget()) { LUA->ThrowError("provided texture is not a render target"); }
 
-		u->Shader->rts[ind] = tex;
+		if (tex == rts[ind]) { return; }
+		rts[ind] = tex;
+		tex->IncrementReferenceCount();
+		return;
+	}
+
+	LUA_LIB_FUNCTION(shader_methods, SetRenderTarget)
+	{
+		ShaderLib_SetRT(LUA);
+		return 0;
+	}	
+	
+	LUA_LIB_FUNCTION(shader_methods, SetReflectionRenderTarget)
+	{
+		ShaderLib_SetRT(LUA, true);
 		return 0;
 	}
 
@@ -916,7 +957,7 @@ namespace ShaderLib
 #define RES_CV(name) name->SetValue(name##_OV);
 #define SET_CV(name) name##_OV = name->GetBool(); name->SetValue(false);
 	MK_CV(mat_drawwater)
-		MK_CV(r_drawtranslucentworld)
+	MK_CV(r_drawtranslucentworld);
 
 
 		LUA_LIB_FUNCTION(shaderlib, BeginDepthPass)
@@ -1026,18 +1067,6 @@ namespace ShaderLib
 		if (!g_pShaderManager) { return; }
 		return;
 	}
-
-	Define_method_Hook(void, RT_ClearColor4ub, void*, unsigned char r, unsigned char g, unsigned char b, unsigned char a)
-	{
-		if (bDepthPass)
-		{
-			return;
-		}
-
-		RT_ClearColor4ub_trampoline()(_this, r, g, b, a);
-	}
-
-
 
 	IMaterial* transpMat = NULL;
 	IMaterial* depthMat = NULL;
@@ -1221,7 +1250,7 @@ namespace ShaderLib
 
 				void* DepthPass = ScanSign(clientdll, sign, sizeof(sign) - 1);
 			if (!DepthPass) { ShaderLibError("CBaseWorldView::SSAO_DepthPass == NULL\n"); return 0; }
-			Setup_Hook(CBaseWorldView_SSAO_DepthPass, DepthPass)
+			Setup_Hook(CBaseWorldView_SSAO_DepthPass, DepthPass);
 		}
 
 		{
@@ -1233,19 +1262,9 @@ namespace ShaderLib
 
 				void* CSkyboxView_Draw = ScanSign(clientdll, sign, sizeof(sign) - 1);
 			if (!CSkyboxView_Draw) { ShaderLibError("CSkyboxView_Draw == NULL\n"); return 0; }
-			Setup_Hook(CSkyboxView_Draw, CSkyboxView_Draw)
+			Setup_Hook(CSkyboxView_Draw, CSkyboxView_Draw);
 		}
 
-		{
-			static const char sign[] =
-				HOOK_SIGN_x32("55 8B EC 8B ? ? ? ? ? 8B 01 5D FF A0 98 01 00 00")
-				HOOK_SIGN_x64("55 8B EC 8B ? ? ? ? ? 8B 01 5D FF A0 98 01 00 00");
-
-			//RT_ClearColor4ub_decl RT_ClearColor4ub = (RT_ClearColor4ub_decl)ScanSign(materialsystemdll, sign, sizeof(sign) - 1);
-			//if (!RT_ClearColor4ub) { ShaderLibError("RT_ClearColor4ub == NULL\n"); return 0; }
-			//
-			//Setup_Hook(RT_ClearColor4ub, RT_ClearColor4ub)
-		}
 
 		{
 			static const char sign[] =
@@ -1255,12 +1274,13 @@ namespace ShaderLib
 
 				void* Bind = ScanSign(materialsystemdll, sign, sizeof(sign) - 1);
 			if (!Bind) { ShaderLibError("CMatRenderContextBase::Bind == NULL\n"); return 0; }
-			Setup_Hook(CMatRenderContextBase_Bind, Bind)
+			Setup_Hook(CMatRenderContextBase_Bind, Bind);
 		}
 
-		Setup_Hook(CShaderManager_PurgeUnusedVertexAndPixelShaders, GetVTable(g_pShaderManager)[15])
-			Setup_Hook(CShaderSystem_InitShaderParameters, GetVTable(g_pCShaderSystem)[14])
 
+		Setup_Hook(CShaderManager_PurgeUnusedVertexAndPixelShaders, GetVTable(g_pShaderManager)[15]);
+		Setup_Hook(CShaderSystem_InitShaderParameters, GetVTable(g_pCShaderSystem)[14]);
+		
 		g_pShaderLibDLLIndex = g_pCShaderSystem->m_ShaderDLLs.AddToTail();
 		g_pShaderLibDLL = &g_pCShaderSystem->m_ShaderDLLs[g_pShaderLibDLLIndex];
 		g_pShaderLibDLL->m_pFileName = strdup("egsm_shaders.dll");

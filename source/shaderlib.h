@@ -288,20 +288,15 @@ namespace ShaderLib
 				Float = 1,
 				Bool = 2,
 				Param = 3,
+				Param_TextureTransform = 4,
 			};
-			char Index = 0;
-			int Num : 4;
-			ShaderConstantType Type : 4;
+			int Index = 0;
+			int Num;
+			ShaderConstantType Type;
 			float Vals[4];
 			float _[13];
 		};
 
-		enum RetValueType
-		{
-			NONE,
-			FLOAT,
-			BOOL
-		};
 
 #define GENStandardConstantType(_) _(EYE_POS) _(CURTIME) _(LIGHT_INFO) _(AMBIENT_CUBE) _(FOG_PARAMS) _(SHADER_CONTROLS) _(DIFFUSE_MODULATION)
 #define GENStandardConstantTypeEnum(v) v,
@@ -313,8 +308,8 @@ namespace ShaderLib
 				__Total__,
 			};
 			int Index = 0;
-			int RowsCount : 4;
-			ShaderConstantF::ShaderConstantType Type : 4;
+			int RowsCount = 4;
+			ShaderConstantF::ShaderConstantType Type;
 			int ParamType = 0;
 			int Param = 0;
 			int IsValid = 2;
@@ -324,14 +319,21 @@ namespace ShaderLib
 
 		struct ShaderConstantM
 		{
-			char Index = 0;
-			ShaderConstantF::ShaderConstantType Type : 4;
+			int Index = 0;
 			int RowsCount = 0;
-			float Vals[16];
+			ShaderConstantF::ShaderConstantType Type;
+			float Vals[17];
 		};
 
 		LightState_t lightState;
 		VMatrix viewMatrix, projectionMatrix, viewProjectionMatrix, inverseViewProjectionMatrix;
+
+		enum RetValueType
+		{
+			NONE,
+			FLOAT,
+			BOOL
+		};
 
 		RetValueType StdToValue(IShaderDynamicAPI* pShaderAPI, ShaderConstantP* param, IMaterialVar** params, int vsh)
 		{
@@ -394,6 +396,7 @@ namespace ShaderLib
 		ShaderPolyMode_t PolyMode = SHADER_POLYMODE_FILL;
 
 		bool OverrideBlending = false;
+		bool bColorWrites = true;
 		ShaderBlendFactor_t BlendSrc = SHADER_BLEND_SRC_ALPHA;
 		ShaderBlendFactor_t BlendDst = SHADER_BLEND_ONE_MINUS_SRC_ALPHA;
 
@@ -407,13 +410,14 @@ namespace ShaderLib
 		uint32 StencilWriteMask = 0;
 		
 		ITexture* rts[4] = { 0, 0, 0, 0 };
+		ITexture* rts_refl[4] = { 0, 0, 0, 0 };
+
+		int nTexCoordCount = 1;
 
 		void OnDrawElements(IMaterialVar** params, IShaderShadow* pShaderShadow, IShaderDynamicAPI* pShaderAPI, VertexCompressionType_t vertexCompression, CBasePerMaterialContextData** pContextDataPtr)
 		{
 			if (!VShader || !PShader) { Draw(false); return; }
 			bool bHasFlashlight = SupportsFlashlight && UsingFlashlight(params);
-			
-
 			bool bHasBaseTexture = params[BASETEXTURE]->IsTexture();
 			bool bIsAlphaTested = IS_FLAG_SET(MATERIAL_VAR_ALPHATEST) != 0;
 
@@ -423,7 +427,8 @@ namespace ShaderLib
 			if (IsSnapshotting())
 			{
 				pShaderShadow->EnableAlphaTest(bIsAlphaTested);
-
+				
+		
 				if (bHasFlashlight)
 				{
 					if (bHasBaseTexture)
@@ -472,16 +477,16 @@ namespace ShaderLib
 				}
 
 				pShaderShadow->EnableSRGBWrite(true);
-
+				
 				unsigned int flags = VERTEX_POSITION | VERTEX_NORMAL | VERTEX_FORMAT_COMPRESSED;
 
-				int nTexCoordCount = 1;
 				int userDataSize = 4;
+
 				pShaderShadow->VertexShaderVertexFormat(flags, nTexCoordCount, NULL, userDataSize);
 
 				pShaderShadow->SetVertexShader(VShader, INT_MIN);
 				pShaderShadow->SetPixelShader(PShader, INT_MIN);
-
+				
 				if (bHasFlashlight)
 				{
 					FogToBlack();
@@ -493,6 +498,7 @@ namespace ShaderLib
 
 				// HACK HACK HACK - enable alpha writes all the time so that we have them for underwater stuff
 				pShaderShadow->EnableAlphaWrites(bFullyOpaque);
+				pShaderShadow->EnableColorWrites(bColorWrites);
 			}
 			else // not snapshotting -- begin dynamic state
 			{
@@ -542,7 +548,7 @@ namespace ShaderLib
 
 				pShaderAPI->SetVertexShaderIndex((5 * (numBones > 0) + lightState.m_nNumLights));
 				pShaderAPI->SetPixelShaderIndex((5 * (bHasFlashlight)) + lightState.m_nNumLights);
-
+				
 				if (bHasFlashlight)
 				{
 					VMatrix worldToTexture;
@@ -665,6 +671,7 @@ namespace ShaderLib
 				for (int i = 0; i < VConstants.Count(); i++)
 				{
 					ShaderConstantF* constant = VConstants.Element(i);
+					
 					if (constant->Type == constant->Float)
 					{
 						pShaderAPI->SetVertexShaderConstant(constant->Index, constant->Vals);
@@ -719,8 +726,15 @@ namespace ShaderLib
 						}
 						else if (type == MATERIAL_VAR_TYPE_MATRIX)
 						{
-							VMatrix f = param->GetMatrixValue();
-							pShaderAPI->SetPixelShaderConstant(constant->Index, f.Base(), constantP->RowsCount);
+							VMatrix mat = param->GetMatrixValue();
+		
+							Vector4D transformation[2];
+							
+							transformation[0].Init(mat[0][0], mat[0][1], mat[0][2], mat[0][3]);
+							transformation[1].Init(mat[1][0], mat[1][1], mat[1][2], mat[1][3]);
+							
+
+							pShaderAPI->SetPixelShaderConstant(constant->Index, transformation[0].Base(), constantP->RowsCount);
 						}
 					}
 				}
@@ -736,6 +750,7 @@ namespace ShaderLib
 				isWaterPass = strcmp(rt->GetName(), "_rt_waterreflection") == 0;
 			}
 
+
 			if (!IsSnapshotting())
 			{
 				pRenderContext->SetStencilEnable(IsStencilEnabled);
@@ -748,7 +763,14 @@ namespace ShaderLib
 				pRenderContext->SetStencilWriteMask(StencilWriteMask);
 				pRenderContext->CullMode(CullMode);
 
-				if (!isWaterPass)
+				if (isWaterPass)
+				{
+					if (rts_refl[0]) { pMatRenderContext->SetRenderTargetEx(0, rts_refl[0]); }
+					if (rts_refl[1]) { pMatRenderContext->SetRenderTargetEx(1, rts_refl[1]); }
+					if (rts_refl[2]) { pMatRenderContext->SetRenderTargetEx(2, rts_refl[2]); }
+					if (rts_refl[3]) { pMatRenderContext->SetRenderTargetEx(3, rts_refl[3]); }
+				}
+				else
 				{				
 					if (rts[0]) { pMatRenderContext->SetRenderTargetEx(0, rts[0]); }
 					if (rts[1]) { pMatRenderContext->SetRenderTargetEx(1, rts[1]); }
@@ -761,7 +783,14 @@ namespace ShaderLib
 			b_isEgsmShader = false;
 			if (!IsSnapshotting())
 			{
-				if (!isWaterPass)
+				if (isWaterPass)
+				{
+					if (rts_refl[0]) { pMatRenderContext->SetRenderTargetEx(0, NULL); }
+					if (rts_refl[1]) { pMatRenderContext->SetRenderTargetEx(1, NULL); }
+					if (rts_refl[2]) { pMatRenderContext->SetRenderTargetEx(2, NULL); }
+					if (rts_refl[3]) { pMatRenderContext->SetRenderTargetEx(3, NULL); }
+				}
+				else
 				{
 					if (rts[0]) { pMatRenderContext->SetRenderTargetEx(0, NULL); }
 					if (rts[1]) { pMatRenderContext->SetRenderTargetEx(1, NULL); }
