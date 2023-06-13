@@ -278,6 +278,7 @@ namespace ShaderLib
 			TextureType Type = Texture;
 			bool IsStandardTexture = false;
 			bool IsValid = false;
+			int FrameVar = -1;
 		};
 
 		struct ShaderConstantF
@@ -597,7 +598,7 @@ namespace ShaderLib
 					}
 					else
 					{
-						BindTexture((Sampler_t)bind->Sampler, bind->ParamIndex, 0);
+						BindTexture((Sampler_t)bind->Sampler, bind->ParamIndex, bind->FrameVar);
 					}
 				}
 

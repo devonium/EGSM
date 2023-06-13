@@ -678,10 +678,10 @@ namespace ShaderLib
 		return 0;
 	}
 
-	void BindTexture(ShaderUData* u, int sampler, int paramindex, TextureBind::TextureType type, bool isStandardTexture = false)
+	void BindTexture(ShaderUData* u, int sampler, int paramindex, TextureBind::TextureType type, bool isStandardTexture = false, int frameVar = -1)
 	{
 		if (sampler > u->Shader->ActiveSamplers) { u->Shader->ActiveSamplers = sampler; }
-
+	
 		for (int i = u->Shader->Binds.Count(); --i >= 0; )
 		{
 			TextureBind* bind = u->Shader->Binds.Element(i);
@@ -698,6 +698,8 @@ namespace ShaderLib
 		bind->Type = type;
 		bind->Sampler = sampler;
 		bind->IsStandardTexture = isStandardTexture;
+		bind->FrameVar = frameVar;
+		
 		u->Shader->Binds.AddToTail(bind);
 	}
 
@@ -706,7 +708,13 @@ namespace ShaderLib
 		ShaderUData* u = GetUShader(LUA);
 		int sampler = LUA->CheckNumber(2);
 		int paramindex = LUA->CheckNumber(3);
-		BindTexture(u, sampler, paramindex, TextureBind::TextureType::Texture);
+		int frameVar = -1;
+		if (LUA->IsType(4, GarrysMod::Lua::Type::NUMBER))
+		{
+			frameVar = LUA->GetNumber(4);
+			if (frameVar < 0 || frameVar > (u->Shader->GetNumParams() - 1)) { luau_error(LUA, "invalid frame var param"); }
+		}
+		BindTexture(u, sampler, paramindex, TextureBind::TextureType::Texture, false, frameVar);
 		return 0;
 	}
 
@@ -724,7 +732,13 @@ namespace ShaderLib
 		ShaderUData* u = GetUShader(LUA);
 		int sampler = LUA->CheckNumber(2);
 		int paramindex = LUA->CheckNumber(3);
-		BindTexture(u, sampler, paramindex, TextureBind::TextureType::Cubemap);
+		int frameVar = -1;
+		if (LUA->IsType(4, GarrysMod::Lua::Type::NUMBER))
+		{
+			frameVar = LUA->GetNumber(4);
+			if (frameVar < 0 || frameVar >(u->Shader->GetNumParams() - 1)) { luau_error(LUA, "invalid frame var param"); }
+		}
+		BindTexture(u, sampler, paramindex, TextureBind::TextureType::Cubemap, false, frameVar);
 		return 0;
 	}
 
@@ -733,7 +747,13 @@ namespace ShaderLib
 		ShaderUData* u = GetUShader(LUA);
 		int sampler = LUA->CheckNumber(2);
 		int paramindex = LUA->CheckNumber(3);
-		BindTexture(u, sampler, paramindex, TextureBind::TextureType::Bumpmap);
+		int frameVar = -1;
+		if (LUA->IsType(4, GarrysMod::Lua::Type::NUMBER))
+		{
+			frameVar = LUA->GetNumber(4);
+			if (frameVar < 0 || frameVar >(u->Shader->GetNumParams() - 1)) { luau_error(LUA, "invalid frame var param"); }
+		}
+		BindTexture(u, sampler, paramindex, TextureBind::TextureType::Bumpmap, false, frameVar);
 		return 0;
 	}
 
