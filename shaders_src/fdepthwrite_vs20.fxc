@@ -80,29 +80,10 @@ VS_OUTPUT main( const VS_INPUT v )
 	
 	
 	float vProjPosW = vProjPos.w;
+	vWorldPos -= (float3)(skybox_origin_SkyBoxScale.xyz);
+	vWorldPos *= skybox_origin_SkyBoxScale.w;
+	vProjPosW *= skybox_origin_SkyBoxScale.w;
 	
-	float dist1 = 0;
-	float dist2 = 0;
-	{
-		float d1 = (vWorldPos.x - skybox_origin_SkyBoxScale.x);
-		float d2 = (vWorldPos.y - skybox_origin_SkyBoxScale.y);
-		float d3 = (vWorldPos.z - skybox_origin_SkyBoxScale.z);
-		dist1 = d1*d1 + d2*d2 + d3*d3;
-	}
-	
-	{
-		float d1 = (vWorldPos.x - 0);
-		float d2 = (vWorldPos.y - 0);
-		float d3 = (vWorldPos.z - 0);
-		dist2 = d1*d1 + d2*d2 + d3*d3;
-	}
-	
-	if(dist1 < dist2)
-	{
-		vWorldPos -= (float3)(skybox_origin_SkyBoxScale.xyz);
-		vWorldPos *= skybox_origin_SkyBoxScale.w;
-		vProjPosW *= skybox_origin_SkyBoxScale.w;
-	}
 
 	
 	//float4 vProjPos2 = mul( float4( vWorldPos, 1.0f ), cViewProj );

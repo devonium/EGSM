@@ -6,7 +6,7 @@ local depthWriteMat = CreateMaterial( "egsm/depthmat", "DepthWrite", {
 } )
 
 local FuckOffFog = GetRenderTarget( "FuckOffFog", ScrW(), ScrH() , 4,
-	MATERIAL_RT_DEPTH_SEPARATE,
+	MATERIAL_RT_DEPTH_SHARED,
 	4 + 8 + 1 + 65536,
 	0,
 	29)

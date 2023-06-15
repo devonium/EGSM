@@ -205,10 +205,16 @@ SHADER_DRAW
 
 			// set up arbitrary far planes, as the real ones are too far ( 30,000 )
 //			pShaderAPI->SetPSNearAndFarZ( 1 );
-			vParms.x = skybox_origin.x;		// arbitrary near
-			vParms.y = skybox_origin.y;		// arbitrary far 
-			vParms.z = skybox_origin.z;
-			vParms.w = iSkyBoxScale;
+
+			CMatRenderContextPtr pRenderContext(g_pMaterialSystem);
+			auto b = pRenderContext->GetRenderTarget();
+			bool isSkyBox = !IsSnapshotting() && b && (strcmp(b->GetName(), "egsm_skyboxrt") == 0);
+
+
+			vParms.x = isSkyBox ? skybox_origin.x : 0;		// arbitrary near
+			vParms.y = isSkyBox ? skybox_origin.y : 0;		// arbitrary far 
+			vParms.z = isSkyBox ? skybox_origin.z : 0;
+			vParms.w = isSkyBox ? iSkyBoxScale : 1;
 			pShaderAPI->SetVertexShaderConstant(VERTEX_SHADER_SHADER_SPECIFIC_CONST_0, vParms.Base(), 1);
 
 
@@ -224,9 +230,10 @@ SHADER_DRAW
 
 		if (!IsSnapshotting())
 		{
-			if (b && strcmp(b->GetName(), "fuckofffog") !=0)
+			
+			if (b && (strcmp(b->GetName(), "fuckofffog") !=0 && strcmp(b->GetName(), "egsm_skyboxrt") != 0))
 			{
-
+				Msg("%s\n", b->GetName());
 			}
 			else
 			{

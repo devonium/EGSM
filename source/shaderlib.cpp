@@ -1136,11 +1136,15 @@ namespace ShaderLib
 		return;
 	}
 
+	ITexture* skyboxrt = NULL;
+
 	Define_method_Hook(void, CSkyboxView_Draw, CSkyboxView*)
 	{
+		auto pMatRenderContext = g_pMaterialSystem->GetRenderContext();
 		if (bDepthPass)
 		{
 			skybox_origin = _this->m_pSky3dParams->origin;
+
 			if (_this->m_pSky3dParams->scale > 0)
 			{
 				iSkyBoxScale = _this->m_pSky3dParams->scale;
@@ -1149,10 +1153,19 @@ namespace ShaderLib
 			{
 				iSkyBoxScale = 1;
 			}
+
+		
+			pMatRenderContext->PushRenderTargetAndViewport(skyboxrt);
 		}
+
+		
 
 		CSkyboxView_Draw_trampoline()(_this);
 
+		if (bDepthPass)
+		{
+			pMatRenderContext->PopRenderTargetAndViewport();
+		}
 		return;
 	}
 
@@ -1354,16 +1367,24 @@ namespace ShaderLib
 	{
 		g_pMaterialSystem->BeginRenderTargetAllocation();
 		g_DepthTex = g_pMaterialSystem->CreateNamedRenderTargetTextureEx2("_rt_ResolvedFullFrameDepth", 1, 1,
-			RT_SIZE_FULL_FRAME_BUFFER, IMAGE_FORMAT_RGBA32323232F, MATERIAL_RT_DEPTH_SEPARATE,
+			RT_SIZE_FULL_FRAME_BUFFER, IMAGE_FORMAT_RGBA32323232F, MATERIAL_RT_DEPTH_SHARED,
 			TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT | TEXTUREFLAGS_POINTSAMPLE,
 			CREATERENDERTARGETFLAGS_NOEDRAM);
 		g_DepthTex->IncrementReferenceCount();
 
 		g_NormalsTex = g_pMaterialSystem->CreateNamedRenderTargetTextureEx2("_rt_Normals", 1, 1,
-			RT_SIZE_FULL_FRAME_BUFFER, IMAGE_FORMAT_RGBA32323232F, MATERIAL_RT_DEPTH_SEPARATE,
+			RT_SIZE_FULL_FRAME_BUFFER, IMAGE_FORMAT_RGBA32323232F, MATERIAL_RT_DEPTH_SHARED,
 			TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT | TEXTUREFLAGS_POINTSAMPLE,
 			CREATERENDERTARGETFLAGS_NOEDRAM);
 		g_NormalsTex->IncrementReferenceCount();
+
+		skyboxrt = g_pMaterialSystem->CreateNamedRenderTargetTextureEx2("egsm_skyboxrt", 1, 1,
+			RT_SIZE_FULL_FRAME_BUFFER, IMAGE_FORMAT_RGBA8888, MATERIAL_RT_DEPTH_SHARED,
+			TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT | TEXTUREFLAGS_POINTSAMPLE,
+			CREATERENDERTARGETFLAGS_NOEDRAM);
+		skyboxrt->IncrementReferenceCount();
+
+
 		g_pMaterialSystem->EndRenderTargetAllocation();
 
 
