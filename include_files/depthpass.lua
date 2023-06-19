@@ -5,12 +5,6 @@ local depthWriteMat = CreateMaterial( "egsm/depthmat", "DepthWrite", {
   ["$alpha_test"] = "0",
 } )
 
-local FuckOffFog = GetRenderTarget( "FuckOffFog", ScrW(), ScrH() , 4,
-	MATERIAL_RT_DEPTH_SHARED,
-	4 + 8 + 1 + 65536,
-	0,
-	29)
-
 local bDepthPass = false
 local halo = {}
 local render = render
@@ -65,17 +59,17 @@ local function PreDrawEffectsHK()
 	WorldMaterialOverride( depthWriteMat )
 	ModelMaterialOverride( depthWriteMat )
 	
-	PushRenderTarget(FuckOffFog)
-		BeginDepthPass()
-			rClear(0,0,0,0)
-			PopRenderTarget()
-			
-			rClear(0,0,0,0)
-			PopRenderTarget()
-			
-			render.RenderView()
-		EndDepthPass()
-	PopRenderTarget()
+	BeginDepthPass()
+		rClear(0,0,0,0) 
+		PopRenderTarget()
+		
+		rClear(0,0,0,0)
+		PopRenderTarget()
+		
+		rClear(0,0,0,0) 
+		render.RenderView()
+	EndDepthPass()
+
 
 	MaterialOverride()
 	BrushMaterialOverride()

@@ -22,6 +22,8 @@
 extern ITexture* g_DepthTex;
 extern Vector skybox_origin;
 extern ITexture* g_NormalsTex;
+extern ITexture* egsm_fuckofffog;
+extern ITexture* skyboxrt;
 extern int iSkyBoxScale;
 
 BEGIN_VS_SHADER_FLAGS(DepthWrite, "Help for Depth Write", SHADER_NOT_EDITABLE)
@@ -208,7 +210,9 @@ SHADER_DRAW
 
 			CMatRenderContextPtr pRenderContext(g_pMaterialSystem);
 			auto b = pRenderContext->GetRenderTarget();
-			bool isSkyBox = !IsSnapshotting() && b && (strcmp(b->GetName(), "egsm_skyboxrt") == 0);
+			bool isSkyBox = !IsSnapshotting() && b == skyboxrt;
+
+		
 
 
 			vParms.x = isSkyBox ? skybox_origin.x : 0;		// arbitrary near
@@ -230,10 +234,9 @@ SHADER_DRAW
 
 		if (!IsSnapshotting())
 		{
-			
-			if (b && (strcmp(b->GetName(), "fuckofffog") !=0 && strcmp(b->GetName(), "egsm_skyboxrt") != 0))
+			if (b != skyboxrt && b != egsm_fuckofffog)
 			{
-				Msg("%s\n", b->GetName());
+				
 			}
 			else
 			{

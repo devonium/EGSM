@@ -54,6 +54,8 @@ extern IStudioRender* g_pStudioRender = NULL;
 extern DepthWrite::CShader* g_DepthWriteShader;
 extern ITexture* g_NormalsTex = NULL;
 extern ITexture* g_DepthTex = NULL;
+extern ITexture* egsm_fuckofffog = NULL;
+extern ITexture* skyboxrt = NULL;
 extern Vector skybox_origin = Vector();
 extern int iSkyBoxScale = 1;
 
@@ -980,14 +982,13 @@ namespace ShaderLib
 	MK_CV(r_drawtranslucentworld);
 
 
-		LUA_LIB_FUNCTION(shaderlib, BeginDepthPass)
+	LUA_LIB_FUNCTION(shaderlib, BeginDepthPass)
 	{
 		auto pMatRenderContext = g_pMaterialSystem->GetRenderContext();
-		pMatRenderContext->PushRenderTargetAndViewport(g_NormalsTex);
-		pMatRenderContext->ClearBuffers(true, true);
+		pMatRenderContext->PushRenderTargetAndViewport(egsm_fuckofffog);
 
 		pMatRenderContext->PushRenderTargetAndViewport(g_DepthTex);
-		pMatRenderContext->ClearBuffers(true, true);
+		pMatRenderContext->PushRenderTargetAndViewport(g_NormalsTex);
 
 		g_pStudioRender->ForcedMaterialOverride(NULL, OVERRIDE_SSAO_DEPTH_WRITE);
 
@@ -1001,7 +1002,8 @@ namespace ShaderLib
 	LUA_LIB_FUNCTION(shaderlib, EndDepthPass)
 	{
 		g_pStudioRender->ForcedMaterialOverride(0);
-
+		auto pMatRenderContext = g_pMaterialSystem->GetRenderContext();
+		pMatRenderContext->PopRenderTargetAndViewport();
 		RES_CV(mat_drawwater);
 		RES_CV(r_drawtranslucentworld);
 
@@ -1125,10 +1127,19 @@ namespace ShaderLib
 		if (bDepthPass)
 		{
 			g_pStudioRender->ForcedMaterialOverride(NULL, OVERRIDE_SSAO_DEPTH_WRITE);
-
 		}
 		IMaterial* ret = R_StudioSetupSkinAndLighting_trampoline()(_this, pRenderContext, index, ppMaterials, materialFlags, pClientRenderable, pColorMeshes, lighting);
 		return ret;
+	}	
+	
+	Define_method_Hook(void, CClientShadowMgr_ComputeShadowDepthTextures, void*, const CViewSetup& viewSetup)
+	{
+		if (bDepthPass)
+		{
+			return;
+		}
+		CClientShadowMgr_ComputeShadowDepthTextures_trampoline()(_this, viewSetup);
+
 	}
 
 	Define_method_Hook(void, CBaseWorldView_SSAO_DepthPass, void*)
@@ -1136,7 +1147,8 @@ namespace ShaderLib
 		return;
 	}
 
-	ITexture* skyboxrt = NULL;
+
+
 
 	Define_method_Hook(void, CSkyboxView_Draw, CSkyboxView*)
 	{
@@ -1285,6 +1297,17 @@ namespace ShaderLib
 			if (!DepthPass) { ShaderLibError("CBaseWorldView::SSAO_DepthPass == NULL\n"); return 0; }
 			Setup_Hook(CBaseWorldView_SSAO_DepthPass, DepthPass);
 		}
+		
+		{
+			static const char sign[] =
+				HOOK_SIGN_M("55 8B EC 81 EC 00 09 00 00 89 4D F8 8B ? ? ? ? ? 8B 81 0C 10 00 00 89 45 E0 85 C0 74 16 6A 04 6A 00 68 ? ? ? ? 6A 00 68 ? ? ? ? FF 15 ? ? ? ? 8B ? ? ? ? ? 57 8B 01 8B 80 88 01 00 00 FF D0 8B F8 89 7D")
+				HOOK_SIGN_CHROMIUM_x32("53 8B DC 83 EC 08 83 E4 F0 83 C4 04 55 8B 6B 04 89 6C 24 04 8B EC 81 EC 88 09 00 00 56 8B F1 8B ? ? ? ? ? 57 89 75 F0 8B 81 0C 10 00 00 89 45 DC 85 C0 74 16 6A 04 6A 00 68 ? ? ? ? 6A 00 68 ? ? ? ? FF")
+				HOOK_SIGN_x64("4C 8B DC 55 49 8D AB E8 F6 FF FF 48 81 EC 10 0A 00 00 48 8B ? ? ? ? ? 48 33 C4 48 89 85 C0 08 00 00 49 89 73 F0 49 89 7B E8 4D 89 63 E0 4C 8B E1 48 8B ? ? ? ? ? 4D 89 6B D8 4C 8B EA 4D 89 73 D0 8B 81")
+			
+			void* CClientShadowMgr_ComputeShadowDepthTextures = ScanSign(clientdll, sign, sizeof(sign) - 1);
+			if (!CClientShadowMgr_ComputeShadowDepthTextures) { ShaderLibError("CClientShadowMgr::ComputeShadowDepthTextures == NULL\n"); return 0; }
+			Setup_Hook(CClientShadowMgr_ComputeShadowDepthTextures, CClientShadowMgr_ComputeShadowDepthTextures);
+		}
 
 		{
 			static const char sign[] =
@@ -1383,6 +1406,13 @@ namespace ShaderLib
 			TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT | TEXTUREFLAGS_POINTSAMPLE,
 			CREATERENDERTARGETFLAGS_NOEDRAM);
 		skyboxrt->IncrementReferenceCount();
+
+
+		egsm_fuckofffog = g_pMaterialSystem->CreateNamedRenderTargetTextureEx2("egsm_fuckofffog", 1, 1,
+			RT_SIZE_FULL_FRAME_BUFFER, IMAGE_FORMAT_RGBA8888, MATERIAL_RT_DEPTH_SHARED,
+			TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT | TEXTUREFLAGS_POINTSAMPLE,
+			CREATERENDERTARGETFLAGS_NOEDRAM);
+		egsm_fuckofffog->IncrementReferenceCount();
 
 
 		g_pMaterialSystem->EndRenderTargetAllocation();
