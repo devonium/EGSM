@@ -1147,6 +1147,12 @@ namespace ShaderLib
 		return;
 	}
 
+	//Define_method_Hook(void, CMaterial_DrawMesh, void*, VertexCompressionType_t vertexCompression)
+	//{
+	//	CMaterial_DrawMesh_trampoline()(_this, vertexCompression);
+	//	return;
+	//}
+
 
 
 
@@ -1331,6 +1337,15 @@ namespace ShaderLib
 				void* Bind = ScanSign(materialsystemdll, sign, sizeof(sign) - 1);
 			if (!Bind) { ShaderLibError("CMatRenderContextBase::Bind == NULL\n"); return 0; }
 			Setup_Hook(CMatRenderContextBase_Bind, Bind);
+		}
+		
+		{
+			//static const char sign[] =
+			//	HOOK_SIGN_CHROMIUM_x32("55 8B EC 56 8B F1 8B 4E 18 85 C9 74 46 8B 46 28 85 C0 74 0B 8B 00 85 C0 74 05 8B 40 08 EB 02 33 C0 A8 04 75 3C 8B 01 FF 10 8B 86 80 00 00 00 33 ? ? ? ? ? 8B")
+			//
+			//void* CMaterial_DrawMesh = ScanSign(materialsystemdll, sign, sizeof(sign) - 1);
+			//if (!CMaterial_DrawMesh) { ShaderLibError("CMaterial::DrawMesh == NULL\n"); return 0; }
+			//Setup_Hook(CMaterial_DrawMesh, CMaterial_DrawMesh);
 		}
 
 

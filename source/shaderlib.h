@@ -253,7 +253,7 @@ namespace ShaderLib
 				}
 				else if (bind->Type == bind->Cubemap)
 				{
-					LoadCubeMap(bind->ParamIndex);
+					LoadCubeMap(bind->ParamIndex, TEXTUREFLAGS_ALL_MIPS);
 				}
 				else
 				{
