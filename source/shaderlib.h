@@ -20,6 +20,8 @@
 #include <defs.h>
 #include <utlhash.h>
 
+extern IMaterialSystemHardwareConfig* g_pHardwareConfig;
+
 namespace ShaderLib
 {
 	static CShaderManager* g_pShaderManager = NULL;
@@ -253,7 +255,9 @@ namespace ShaderLib
 				}
 				else if (bind->Type == bind->Cubemap)
 				{
-					LoadCubeMap(bind->ParamIndex, TEXTUREFLAGS_ALL_MIPS);
+					int envMapFlags = g_pHardwareConfig->GetHDRType() == HDR_TYPE_NONE ? TEXTUREFLAGS_SRGB : 0;
+					envMapFlags |= TEXTUREFLAGS_ALL_MIPS;
+					LoadCubeMap(bind->ParamIndex, envMapFlags);
 				}
 				else
 				{

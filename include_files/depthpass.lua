@@ -52,7 +52,6 @@ local function PreDrawEffectsHK()
 	if bDepthPass then return end
 	bDepthPass = true
 	halo.Render = dummyFn
-
 	
 	MaterialOverride( depthWriteMat )
 	BrushMaterialOverride( depthWriteMat )
@@ -82,9 +81,12 @@ end
 
 local rClearDepth = render.ClearDepth
 
+
+
 function shaderlib.__INIT()
 	halo = halo
 	hRender = halo.Render
-	hook.Add("PreDrawViewModel", "EGSM_ImTooLazy", rClearDepth)
-	hook.Add( "PreDrawEffects", "EGSM_ImTooLazy", PreDrawEffectsHK)
+
+	hook.Add("PreDrawViewModel", "!!!EGSM_ImTooLazy", function() if bDepthPass then rClearDepth() end end)
+	hook.Add( "RenderScene", "!!!EGSM_ImTooLazy", PreDrawEffectsHK)
 end
