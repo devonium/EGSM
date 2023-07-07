@@ -1141,6 +1141,26 @@ namespace ShaderLib
 		CClientShadowMgr_ComputeShadowDepthTextures_trampoline()(_this, viewSetup);
 
 	}
+	
+	struct WaterRenderInfo_t
+	{
+		bool m_bCheapWater : 1;
+		bool m_bReflect : 1;
+		bool m_bRefract : 1;
+		bool m_bReflectEntities : 1;
+		bool m_bDrawWaterSurface : 1;
+		bool m_bOpaqueWater : 1;
+
+	};
+
+	Define_method_Hook(void, CViewRender_DetermineWaterRenderInfo, void*, const void* idc, WaterRenderInfo_t &info)
+	{
+		CViewRender_DetermineWaterRenderInfo_trampoline()(_this, idc, info);
+		if (bDepthPass)
+		{
+			info.m_bCheapWater = false;
+		}
+	}
 
 	Define_method_Hook(void, CBaseWorldView_SSAO_DepthPass, void*)
 	{
@@ -1202,9 +1222,9 @@ namespace ShaderLib
 
 	int MenuInit(GarrysMod::Lua::ILuaBase* LUA)
 	{
-		static Color msgc(100, 255, 100, 255);
+		static Color msgc(100, 255, 100,  255);
 		ConColorMsg(msgc, "ShaderLib\n");
-
+		
 		if (!Sys_LoadInterface("materialsystem", "MaterialSystemHardwareConfig012", NULL, (void**)&g_pHardwareConfig)) { ShaderLibError("MaterialSystemHardwareConfig012 == NULL"); }
 		if (g_pHardwareConfig->GetDXSupportLevel() < 90) { ShaderLibError("Unsupported DirectX version(dxlevel<90)"); };
 		if (!Sys_LoadInterface("materialsystem", "ShaderSystem002", NULL, (void**)&g_pSLShaderSystem)) { ShaderLibError("IShaderSystem == NULL"); }
@@ -1313,6 +1333,18 @@ namespace ShaderLib
 			void* CClientShadowMgr_ComputeShadowDepthTextures = ScanSign(clientdll, sign, sizeof(sign) - 1);
 			if (!CClientShadowMgr_ComputeShadowDepthTextures) { ShaderLibError("CClientShadowMgr::ComputeShadowDepthTextures == NULL\n"); return 0; }
 			Setup_Hook(CClientShadowMgr_ComputeShadowDepthTextures, CClientShadowMgr_ComputeShadowDepthTextures);
+		}
+		
+		
+		{
+			static const char sign[] =
+				HOOK_SIGN_CHROMIUM_x32("55 8B EC 83 EC 10 56 57 8B 7D 0C 89 4D F0 8A 07 24 E1 0C 21 88 07 8B 45 08 83 38 FF 8B 70 14 0F 84 ? ? ? ? 85 F6 0F 84 ? ? ? ? A1 ? ? ? ? B9 ? ? ? ? FF 50 34 8A 0F F7 D8 1A C0 80 E1 EF 24 10 0A C8 88 0F F6")
+				HOOK_SIGN_M("55 8B EC 83 EC 0C 8B 45 08 56 8B 75 0C 57 89 4D F4 8A 16 80 E2 E1 80 CA 21 88 16 83 38 FF 8B 78 14 0F 84 ? ? ? ? 85 FF 0F 84 ? ? ? ? 8B ? ? ? ? ? 8B 41 48 53 8D 59 48 85 C0 74 19 80 38 00 74 14 8B CB E8 ? ? ? ? 50 E8")
+				HOOK_SIGN_x64("48 89 4C 24 08 56 41 55 41 56 48 83 EC 60 41 0F B6 00 49 8B F0 24 E1 4C 8B EA 0C 21 41 88 00 83 3A FF 4C 8B 72 18 0F 84 ? ? ? ? 4D 85 F6 0F 84 ? ? ? ? 48 8B ? ? ? ? ? 48 8D ? ? ? ? ? FF 50 68 F7 D8 0F B6 06 1A C9 24")
+			
+			void* CViewRender_DetermineWaterRenderInfo = ScanSign(clientdll, sign, sizeof(sign) - 1);
+			if (!CViewRender_DetermineWaterRenderInfo) { ShaderLibError("CViewRender::DetermineWaterRenderInfo == NULL\n"); return 0; }
+			Setup_Hook(CViewRender_DetermineWaterRenderInfo, CViewRender_DetermineWaterRenderInfo);
 		}
 
 		{

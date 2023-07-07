@@ -47,10 +47,13 @@ local depthRT = render.GetResolvedFullFrameDepth()
 local hRender = dummyFn
 local BeginDepthPass = shaderlib.BeginDepthPass
 local EndDepthPass = shaderlib.EndDepthPass
+local RenderView = render.RenderView
+local rClearDepth = render.ClearDepth
 
 local function PreDrawEffectsHK() 
 	if bDepthPass then return end
 	bDepthPass = true
+	
 	halo.Render = dummyFn
 	
 	MaterialOverride( depthWriteMat )
@@ -66,9 +69,9 @@ local function PreDrawEffectsHK()
 		PopRenderTarget()
 		
 		rClear(0,0,0,0) 
-		render.RenderView()
-	EndDepthPass()
 
+		RenderView()
+	EndDepthPass()
 
 	MaterialOverride()
 	BrushMaterialOverride()
@@ -79,14 +82,28 @@ local function PreDrawEffectsHK()
 	bDepthPass = false
 end
 
-local rClearDepth = render.ClearDepth
-
-
+local zero_vec = Vector(0,0,0)
+local min,max = zero_vec, zero_vec
 
 function shaderlib.__INIT()
 	halo = halo
 	hRender = halo.Render
 
-	hook.Add("PreDrawViewModel", "!!!EGSM_ImTooLazy", function() if bDepthPass then rClearDepth() end end)
-	hook.Add( "RenderScene", "!!!EGSM_ImTooLazy", PreDrawEffectsHK)
+	hook.Add("PreDrawViewModel", "!!!EGSM_ImTooLazy", function() if bDepthPass then rClearDepth() end end)	
+	hook.Add("NeedsDepthPass", "!!!EGSM_ImTooLazy", PreDrawEffectsHK)
+	
+	hook.Add("PostDraw2DSkyBox", "!!!EGSM_ImTooLazy", function()
+		local rt = render.GetRenderTarget()
+		if !rt or rt:GetName() != "egsm_skyboxrt" 
+		then  
+			return
+		end
+		cam.Start3D( zero_vec, EyeAngles() )
+		min,max = game.GetWorld():GetModelBounds()
+	
+		render.SetMaterial( depthWriteMat )
+		
+		render.DrawBox( zero_vec, angle_zero, max, min, color_white )
+		cam.End3D()
+	end)	
 end
