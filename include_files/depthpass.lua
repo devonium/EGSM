@@ -1,4 +1,3 @@
-
 local depthWriteMat = CreateMaterial( "egsm/depthmat", "DepthWrite", {
   ["$no_fullbright"] = "1",
   ["$color_depth"] = "1",
@@ -63,10 +62,8 @@ local function PreDrawEffectsHK()
 	
 	BeginDepthPass()
 		rClear(0,0,0,0) 
-		PopRenderTarget()
 		
 		rClear(0,0,0,0)
-		PopRenderTarget()
 		
 		rClear(0,0,0,0) 
 

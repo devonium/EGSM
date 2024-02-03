@@ -8,6 +8,7 @@
 
 #if !defined(_STATIC_LINKED) || defined(_SHARED_LIB)
 
+
 #include "basetypes.h"
 #include "mathlib/vmatrix.h"
 #include "mathlib/mathlib.h"
@@ -26,22 +27,28 @@ inline void AddPointToBounds(const Vector& v, Vector& mins, Vector& maxs) { Asse
 
 #ifdef CHROMIUM
 
-#if defined(__i386__) || defined(_M_IX86)
-inline void _SSE_RSqrtInline(float a, float* out)
+inline vec_t VectorNormalize(Vector& v)
 {
-	__m128  xx = _mm_load_ss(&a);
-	__m128  xr = _mm_rsqrt_ss(xx);
-	__m128  xt;
-	xt = _mm_mul_ss(xr, xr);
-	xt = _mm_mul_ss(xt, xx);
-	xt = _mm_sub_ss(_mm_set_ss(3.f), xt);
-	xt = _mm_mul_ss(xt, _mm_set_ss(0.5f));
-	xr = _mm_mul_ss(xr, xt);
-	_mm_store_ss(out, xr);
+	Assert(v.IsValid());
+	vec_t l = v.Length();
+	if (l != 0.0f)
+	{
+		v /= l;
+	}
+	else
+	{
+		// FIXME: 
+		// Just copying the existing implemenation; shouldn't res.z == 0?
+		v.x = v.y = 0.0f; v.z = 1.0f;
+	}
+	return l;
 }
+
 #endif
 
 #ifdef WIN64
+
+
 
 float FASTCALL pfVectorNormalize(Vector& vec)
 {
@@ -61,27 +68,7 @@ float FASTCALL pfVectorNormalize(Vector& vec)
 	return radius;
 }
 
-#endif
 
-FORCEINLINE float VectorNormalize(Vector& vec)
-{
-#ifndef DEBUG // stop crashing my edit-and-continue!
-#if defined(__i386__) || defined(_M_IX86)
-#define DO_SSE_OPTIMIZATION
-#endif
-#endif
-
-#if defined( DO_SSE_OPTIMIZATION )
-	float sqrlen = vec.LengthSqr() + 1.0e-10f, invlen;
-	_SSE_RSqrtInline(sqrlen, &invlen);
-	vec.x *= invlen;
-	vec.y *= invlen;
-	vec.z *= invlen;
-	return sqrlen * invlen;
-#else
-	return (*pfVectorNormalize)(vec);
-#endif
-}
 
 #endif
 

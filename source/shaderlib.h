@@ -487,6 +487,11 @@ namespace ShaderLib
 				
 				unsigned int flags = VERTEX_POSITION | VERTEX_NORMAL | VERTEX_FORMAT_COMPRESSED;
 
+				if (IS_FLAG_SET(MATERIAL_VAR_VERTEXCOLOR) || IS_FLAG_SET(MATERIAL_VAR_VERTEXALPHA))
+				{
+					flags |= VERTEX_COLOR;
+				}
+
 				int userDataSize = 4;
 
 				pShaderShadow->VertexShaderVertexFormat(flags, nTexCoordCount, NULL, userDataSize);

@@ -981,14 +981,23 @@ namespace ShaderLib
 	MK_CV(mat_drawwater)
 	MK_CV(r_drawtranslucentworld);
 
-
 	LUA_LIB_FUNCTION(shaderlib, BeginDepthPass)
 	{
 		auto pMatRenderContext = g_pMaterialSystem->GetRenderContext();
+		
 		pMatRenderContext->PushRenderTargetAndViewport(egsm_fuckofffog);
+		pMatRenderContext->ClearBuffers(true, true, true);
+		pMatRenderContext->ClearColor4ub(0, 0, 0, 0);
 
 		pMatRenderContext->PushRenderTargetAndViewport(g_DepthTex);
+		pMatRenderContext->ClearBuffers(true, true, true);
+		pMatRenderContext->ClearColor4ub(0, 0, 0, 0);
+		pMatRenderContext->PopRenderTargetAndViewport();
+
 		pMatRenderContext->PushRenderTargetAndViewport(g_NormalsTex);
+		pMatRenderContext->ClearBuffers(true, true, true);
+		pMatRenderContext->ClearColor4ub(0, 0, 0, 0);
+		pMatRenderContext->PopRenderTargetAndViewport();
 
 		g_pStudioRender->ForcedMaterialOverride(NULL, OVERRIDE_SSAO_DEPTH_WRITE);
 
@@ -1001,12 +1010,12 @@ namespace ShaderLib
 
 	LUA_LIB_FUNCTION(shaderlib, EndDepthPass)
 	{
+
 		g_pStudioRender->ForcedMaterialOverride(0);
 		auto pMatRenderContext = g_pMaterialSystem->GetRenderContext();
 		pMatRenderContext->PopRenderTargetAndViewport();
 		RES_CV(mat_drawwater);
 		RES_CV(r_drawtranslucentworld);
-
 		bDepthPass = false;
 		return 0;
 	}
@@ -1017,7 +1026,7 @@ namespace ShaderLib
 		{
 			g_pShaderManager = _this;
 #ifndef WIN64
-			CShaderManager_CreateVertexShader_hook.Destroy();
+			CShaderManager_CreateVertexShader_hook.Disable();
 #endif
 			return  (int)INVALID_SHADER;
 		}
@@ -1158,7 +1167,7 @@ namespace ShaderLib
 		CViewRender_DetermineWaterRenderInfo_trampoline()(_this, idc, info);
 		if (bDepthPass)
 		{
-			info.m_bCheapWater = false;
+			//info.m_bCheapWater = false;
 		}
 	}
 
@@ -1223,7 +1232,7 @@ namespace ShaderLib
 	int MenuInit(GarrysMod::Lua::ILuaBase* LUA)
 	{
 		static Color msgc(100, 255, 100,  255);
-		ConColorMsg(msgc, "ShaderLib\n");
+		ConColorMsg(msgc, "ShaderLib\n"); 
 		
 		if (!Sys_LoadInterface("materialsystem", "MaterialSystemHardwareConfig012", NULL, (void**)&g_pHardwareConfig)) { ShaderLibError("MaterialSystemHardwareConfig012 == NULL"); }
 		if (g_pHardwareConfig->GetDXSupportLevel() < 90) { ShaderLibError("Unsupported DirectX version(dxlevel<90)"); };
@@ -1322,6 +1331,8 @@ namespace ShaderLib
 				void* DepthPass = ScanSign(clientdll, sign, sizeof(sign) - 1);
 			if (!DepthPass) { ShaderLibError("CBaseWorldView::SSAO_DepthPass == NULL\n"); return 0; }
 			Setup_Hook(CBaseWorldView_SSAO_DepthPass, DepthPass);
+
+			
 		}
 		
 		{
