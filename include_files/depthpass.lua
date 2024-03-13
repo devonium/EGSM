@@ -3,6 +3,7 @@ local depthWriteMat = CreateMaterial( "egsm/depthmat", "DepthWrite", {
   ["$color_depth"] = "1",
   ["$alpha_test"] = "0",
 } )
+local fixResolvedfullframedepthMat
 
 local bDepthPass = false
 local halo = {}
@@ -48,7 +49,7 @@ local BeginDepthPass = shaderlib.BeginDepthPass
 local EndDepthPass = shaderlib.EndDepthPass
 local RenderView = render.RenderView
 local rClearDepth = render.ClearDepth
-
+local resolvedDepthRT = render.GetResolvedFullFrameDepth()
 local function PreDrawEffectsHK() 
 	if bDepthPass then return end
 	bDepthPass = true
@@ -77,6 +78,12 @@ local function PreDrawEffectsHK()
 	
 	halo.Render = hRender
 	bDepthPass = false
+	
+	render.PushRenderTarget(resolvedDepthRT)
+		render.Clear(0,0,0,0, true, true)
+		render.SetMaterial(fixResolvedfullframedepthMat)
+		render.DrawScreenQuad()
+	render.PopRenderTarget()
 end
 
 local zero_vec = Vector(0,0,0)
@@ -85,7 +92,7 @@ local min,max = zero_vec, zero_vec
 function shaderlib.__INIT()
 	halo = halo
 	hRender = halo.Render
-
+	
 	hook.Add("PreDrawViewModel", "!!!EGSM_ImTooLazy", function() if bDepthPass then rClearDepth() end end)	
 	hook.Add("NeedsDepthPass", "!!!EGSM_ImTooLazy", PreDrawEffectsHK)
 	
@@ -102,5 +109,54 @@ function shaderlib.__INIT()
 		
 		render.DrawBox( zero_vec, angle_zero, max, min, color_white )
 		cam.End3D()
-	end)	
+	end)
+	
+	
+	shaderlib.CompileVertexShader("FixResolvedfullframedepthVS", 0, [==[
+	#include "common_vs_fxc.h"
+	struct VS_INPUT
+	{
+		float4 vPos					: POSITION;
+		float4 vTexCoord				: TEXCOORD0;
+	};
+
+	struct VS_OUTPUT
+	{
+		float4 projPosSetup	: POSITION;
+		float4 vTexCoord				: TEXCOORD0;
+	};
+
+	VS_OUTPUT main( const VS_INPUT v )
+	{
+		VS_OUTPUT o = (VS_OUTPUT)0;
+		o.projPosSetup = mul( v.vPos, cViewProj );
+		o.vTexCoord = v.vTexCoord;
+		return o;
+	}
+	]==]) 
+
+	shaderlib.CompilePixelShader("FixResolvedfullframedepthPS", 0, [==[
+	sampler WDBuffer : register(s0);
+
+	struct PS_IN
+	{
+		float2 vTexCoord				: TEXCOORD0;
+	};
+
+	float4 main(PS_IN i ) : COLOR
+	{
+		return float4((1/tex2D(WDBuffer, i.vTexCoord).w)/4000,0,0,1);
+	};  
+	]==])
+
+
+	local shader = shaderlib.NewShader("FixResolvedfullframedepth")
+	 
+	shader:SetPixelShader("FixResolvedfullframedepthPS")
+	shader:SetVertexShader("FixResolvedfullframedepthVS")
+
+	shader:SetParamDefValue(PARAM_BASETEXTURE, "_rt_WPNDepth")
+	shader:BindTexture(0, PARAM_BASETEXTURE)
+
+	fixResolvedfullframedepthMat = CreateMaterial("EGSMFixResolvedfullframedepth", "FixResolvedfullframedepth", {} )
 end

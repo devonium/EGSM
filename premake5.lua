@@ -22,6 +22,7 @@ include("prepare_files_for_include.lua")
 include(gmcommon)
 
 
+
 function CreateProject(config)
 	assert(type(config) == "table", "supplied argument is not a table!")
 

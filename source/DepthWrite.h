@@ -175,7 +175,7 @@ SHADER_DRAW
 #ifndef _X360
 			else // 3.0 shader case (PC only)
 			{
-				SetHWMorphVertexShaderState(VERTEX_SHADER_SHADER_SPECIFIC_CONST_6, VERTEX_SHADER_SHADER_SPECIFIC_CONST_7, SHADER_VERTEXTEXTURE_SAMPLER0);
+				//SetHWMorphVertexShaderState(VERTEX_SHADER_SHADER_SPECIFIC_CONST_6, VERTEX_SHADER_SHADER_SPECIFIC_CONST_7, SHADER_VERTEXTEXTURE_SAMPLER0);
 
 				fdepthwrite_vs30_Dynamic_Index vshIndex;
 				vshIndex.SetSKINNING(pShaderAPI->GetCurrentNumBones() > 0);

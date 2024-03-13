@@ -1447,7 +1447,8 @@ namespace ShaderLib
 	void LuaInit(GarrysMod::Lua::ILuaBase* LUA)
 	{
 		g_pMaterialSystem->BeginRenderTargetAllocation();
-		g_DepthTex = g_pMaterialSystem->CreateNamedRenderTargetTextureEx2("_rt_ResolvedFullFrameDepth", 1, 1,
+		
+		g_DepthTex = g_pMaterialSystem->CreateNamedRenderTargetTextureEx2("_rt_WPNDepth", 1, 1,
 			RT_SIZE_FULL_FRAME_BUFFER, IMAGE_FORMAT_RGBA32323232F, MATERIAL_RT_DEPTH_SHARED,
 			TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT | TEXTUREFLAGS_POINTSAMPLE,
 			CREATERENDERTARGETFLAGS_NOEDRAM);
@@ -1460,14 +1461,14 @@ namespace ShaderLib
 		g_NormalsTex->IncrementReferenceCount();
 
 		skyboxrt = g_pMaterialSystem->CreateNamedRenderTargetTextureEx2("egsm_skyboxrt", 1, 1,
-			RT_SIZE_FULL_FRAME_BUFFER, IMAGE_FORMAT_RGBA8888, MATERIAL_RT_DEPTH_SHARED,
+			RT_SIZE_FULL_FRAME_BUFFER, IMAGE_FORMAT_I8, MATERIAL_RT_DEPTH_SHARED,
 			TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT | TEXTUREFLAGS_POINTSAMPLE,
 			CREATERENDERTARGETFLAGS_NOEDRAM);
 		skyboxrt->IncrementReferenceCount();
 
 
 		egsm_fuckofffog = g_pMaterialSystem->CreateNamedRenderTargetTextureEx2("egsm_fuckofffog", 1, 1,
-			RT_SIZE_FULL_FRAME_BUFFER, IMAGE_FORMAT_RGBA8888, MATERIAL_RT_DEPTH_SHARED,
+			RT_SIZE_FULL_FRAME_BUFFER, IMAGE_FORMAT_I8, MATERIAL_RT_DEPTH_SHARED,
 			TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT | TEXTUREFLAGS_POINTSAMPLE,
 			CREATERENDERTARGETFLAGS_NOEDRAM);
 		egsm_fuckofffog->IncrementReferenceCount();
