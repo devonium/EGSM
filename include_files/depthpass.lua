@@ -19,21 +19,30 @@ local BrushMaterialOverride = BrushMaterialOverride
 local WorldMaterialOverride = WorldMaterialOverride
 local ModelMaterialOverride = ModelMaterialOverride
 
+local MatMaterialOverride 
+local MatBrushMaterialOverride
+local MatWorldMaterialOverride
+local MatModelMaterialOverride
+
 function render.MaterialOverride(m)
+	MatMaterialOverride = m
 	if bDepthPass then return end
 	MaterialOverride(m)
 end
 
 function render.BrushMaterialOverride(m)
+	MatBrushMaterialOverride = m
 	if bDepthPass then return end
 	BrushMaterialOverride(m)
 end
 
 function render.WorldMaterialOverride(m)
+	MatWorldMaterialOverride = m
 	if bDepthPass then return end
 	WorldMaterialOverride(m)
 end
 function render.ModelMaterialOverride(m)
+	MatModelMaterialOverride = m
 	if bDepthPass then return end
 	ModelMaterialOverride(m)
 end
@@ -71,10 +80,10 @@ local function PreDrawEffectsHK()
 		RenderView()
 	EndDepthPass()
 
-	MaterialOverride()
-	BrushMaterialOverride()
-	WorldMaterialOverride()
-	ModelMaterialOverride()
+	MaterialOverride(MatMaterialOverride)
+	BrushMaterialOverride(MatBrushMaterialOverride)
+	WorldMaterialOverride(MatWorldMaterialOverride)
+	ModelMaterialOverride(MatModelMaterialOverride)
 	
 	halo.Render = hRender
 	bDepthPass = false
@@ -93,6 +102,12 @@ function shaderlib.__INIT()
 	halo = halo
 	hRender = halo.Render
 	
+	hook.Add("PreRender", "!!!EGSM_ImTooLazy", function() 
+		MatMaterialOverride 	 = nil
+		MatBrushMaterialOverride = nil
+		MatWorldMaterialOverride = nil
+		MatModelMaterialOverride = nil
+	end)	
 	hook.Add("PreDrawViewModel", "!!!EGSM_ImTooLazy", function() if bDepthPass then rClearDepth() end end)	
 	hook.Add("NeedsDepthPass", "!!!EGSM_ImTooLazy", PreDrawEffectsHK)
 	

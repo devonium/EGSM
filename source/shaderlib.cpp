@@ -1182,8 +1182,36 @@ namespace ShaderLib
 	//	return;
 	//}
 
+	Define_method_Hook(KeyValues*, CMaterial_InitializeShader, void*, KeyValues& keyValues, KeyValues& patchKeyValues, int nFindContext)
+	{
+		auto v = keyValues.FindKey("EGSMShader");
 
-
+		if (v)
+		{
+			if (v->GetDataType() == v->TYPE_STRING)
+			{
+				auto name = keyValues.GetName();
+				keyValues.SetName(v->GetString());
+				auto ret = CMaterial_InitializeShader_trampoline()(_this, keyValues, patchKeyValues, nFindContext);
+				keyValues.SetName(name);
+				return ret;
+			}
+			else if (v->GetDataType() == v->TYPE_NONE)
+			{
+				auto sname = v->FindKey("Shader");
+				if (sname)
+				{
+					auto name = v->GetName();
+					v->SetName(sname->GetString());
+					auto ret = CMaterial_InitializeShader_trampoline()(_this, *v, patchKeyValues, nFindContext);
+					v->SetName(name);
+					return ret;
+				}
+			}
+		}
+		
+		return CMaterial_InitializeShader_trampoline()(_this, keyValues, patchKeyValues, nFindContext);
+	}
 
 	Define_method_Hook(void, CSkyboxView_Draw, CSkyboxView*)
 	{
@@ -1382,6 +1410,15 @@ namespace ShaderLib
 			Setup_Hook(CMatRenderContextBase_Bind, Bind);
 		}
 		
+		{
+			static const char sign[] =
+				HOOK_SIGN_CHROMIUM_x32("55 8B EC 81 EC 28 07 00 00 53 56 8B F1 8B ? ? ? ? ? 57 89 75 F8 8B 01 FF 90 A8 01 00 00 8B 7D 08 33 DB 8B CF 89 45 E0 89 7D EC 89 5D E8 E8 ? ? ? ? 8B C8 85 C9 75 1C")
+				HOOK_SIGN_CHROMIUM_x64("40 53 55 56 57 41 54 41 56 41 57 48 81 EC 90 0B 00 00 48 8B ? ? ? ? ? 48 33 C4 48 89 84 24 70 0B 00 00 4C 8B F1 44 89 4C 24 44 48 8B ? ? ? ? ? 45 8B E1 4C 89 44 24 58 4C 8B FA 48 8B 01 FF 90 50 03 00 00 49 8B CF 4C 89 7C 24 48 48 89 44 24 50 33")
+			void* Bind = ScanSign(materialsystemdll, sign, sizeof(sign) - 1);
+			if (!Bind) { ShaderLibError("CMaterial::InitializeShader == NULL\n"); return 0; }
+			Setup_Hook(CMaterial_InitializeShader, Bind);
+		}
+
 		{
 			//static const char sign[] =
 			//	HOOK_SIGN_CHROMIUM_x32("55 8B EC 56 8B F1 8B 4E 18 85 C9 74 46 8B 46 28 85 C0 74 0B 8B 00 85 C0 74 05 8B 40 08 EB 02 33 C0 A8 04 75 3C 8B 01 FF 10 8B 86 80 00 00 00 33 ? ? ? ? ? 8B")
