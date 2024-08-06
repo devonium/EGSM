@@ -1,6 +1,7 @@
 ### EGSM
 A module that enhances gmod with a thing that was asked for decades
 
+* [Examples](https://github.com/devonium/EGSM/wiki/example_shaders)
 * [Documentation](https://github.com/devonium/EGSM/wiki)
 * [Discord](https://discord.gg/X2Ay3cgW8T)
  
